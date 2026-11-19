@@ -1,4 +1,4 @@
-# Origon — End-to-End Institutional M&A Decision Support and Origination Platform
+# Origon — Institutional M&A Decision Support and Origination Platform
 
 Origon is an integrated machine learning, valuation, and stochastic deal simulation platform engineered for Investment Banking M&A Advisory, Corporate Development, and Private Equity teams. It unifies four core institutional workflows under a single high-density financial terminal with real-time bilingual (`TR` / `EN`) localization and support for both publicly listed corporations and user-entered private target companies.
 
