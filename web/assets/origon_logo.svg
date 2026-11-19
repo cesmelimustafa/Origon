@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="origonBg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0D131D"/>
+      <stop offset="100%" stop-color="#070A0F"/>
+    </linearGradient>
+    <linearGradient id="origonCobalt" x1="12" y1="108" x2="112" y2="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="55%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#93C5FD"/>
+    </linearGradient>
+    <linearGradient id="origonGold" x1="22" y1="112" x2="118" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#B48811"/>
+      <stop offset="50%" stop-color="#D4AF37"/>
+      <stop offset="100%" stop-color="#F7D979"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="22" fill="url(#origonBg)" stroke="#212B3A" stroke-width="2"/>
+  <!-- Upper ascending ribbon (Institutional Steel Blue) -->
+  <path d="M12 104 L42 46 C53 28 74 30 83 52 L85 57 L114 25 L88 73 C77 88 57 84 68 65 C73 56 64 46 53 56 L12 114 Z" fill="url(#origonCobalt)"/>
+  <!-- Lower interlocking ascending ribbon (Sovereign Champagne Gold) -->
+  <path d="M24 112 L52 60 C58 51 67 52 61 63 C53 79 71 99 90 80 L118 32 L118 54 L94 94 C77 115 53 105 49 79 L24 112 Z" fill="url(#origonGold)"/>
+  <!-- Central convergence node -->
+  <circle cx="66" cy="65" r="4.5" fill="#F7D979"/>
+  <!-- Apex target node -->
+  <circle cx="118" cy="19" r="5" fill="#D4AF37"/>
+</svg>

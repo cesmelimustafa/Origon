@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Origon — Institutional M&amp;A Analytics Platform</title>
+  <link rel="icon" type="image/svg+xml" href="/static/assets/origon_logo.svg" />
+  <link rel="alternate icon" type="image/x-icon" href="/static/assets/origon_logo.ico" />
+  <link rel="stylesheet" href="/static/css/terminal.css" />
+</head>
+<body>
+  <header class="terminal-header">
+    <div class="brand-cluster">
+      <div class="brand-logo-wrap" title="Origon M&A Platform">
+        <img src="/static/assets/origon_logo.png" alt="Origon Logo" onerror="this.src='/static/assets/origon_logo.svg'" />
+      </div>
+      <div class="brand-titles">
+        <div class="brand-name-row">
+          <span class="brand-name">ORIGON</span>
+          <span class="brand-tag" data-i18n="brandTag">M&amp;A ANALİTİK</span>
+        </div>
+        <span class="brand-subtitle" data-i18n="brandSubtitle">Kurumsal Hedef Şirket Tahmin ve Karar Destek Terminali</span>
+      </div>
+    </div>
+
+    <nav class="nav-tabs" aria-label="Workspace Views">
+      <button type="button" class="nav-tab active" data-view="screener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+        </svg>
+        <span data-i18n="navScreener">Hedef Tarama Terminali</span>
+      </button>
+      <button type="button" class="nav-tab" data-view="deepdive">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 12h4l3-9 5 18 3-9h5"></path>
+        </svg>
+        <span data-i18n="navDeepDive">Şirket Analizi ve Karar Gerekçesi</span>
+      </button>
+      <button type="button" class="nav-tab" data-view="backtest">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10"></line>
+          <line x1="12" y1="20" x2="12" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="14"></line>
+        </svg>
+        <span data-i18n="navBacktest">Model Doğrulama ve Kalibrasyon</span>
+      </button>
+    </nav>
+
+    <div class="header-actions">
+      <div class="lang-switch" role="group" aria-label="Language Selector">
+        <button type="button" class="lang-btn active" data-lang="tr">TR</button>
+        <button type="button" class="lang-btn" data-lang="en">EN</button>
+      </div>
+      <div class="system-status">
+        <span class="status-dot"></span>
+        <span id="headerModelLabel" class="mono">Yükleniyor</span>
+      </div>
+      <button type="button" id="btnRefreshPipeline" class="btn-terminal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+        <span id="btnRefreshText" data-i18n="btnRefresh">Piyasa Verisini Güncelle</span>
+      </button>
+    </div>
+  </header>
+
+  <section class="kpi-ribbon" aria-label="Key Performance Indicators">
+    <div class="kpi-cell">
+      <span class="kpi-label" data-i18n="kpiUniverseLabel">Taranan Şirket Evreni</span>
+      <div class="kpi-value-row">
+        <span id="kpiFilteredCount" class="kpi-value">--</span>
+        <span id="kpiLiveCount" class="kpi-sub positive">--</span>
+      </div>
+    </div>
+    <div class="kpi-cell">
+      <span class="kpi-label" data-i18n="kpiHighConvLabel">Yüksek Öncelikli Adaylar</span>
+      <div class="kpi-value-row">
+        <span id="kpiHighConviction" class="kpi-value">--</span>
+        <span class="kpi-sub gold" data-i18n="kpiHighConvSub">Olasılık &ge; %35</span>
+      </div>
+    </div>
+    <div class="kpi-cell">
+      <span class="kpi-label" data-i18n="kpiLiftLabel">İlk Yüzde On Yakalama Çarpanı</span>
+      <div class="kpi-value-row">
+        <span id="kpiLiftTop10" class="kpi-value">--</span>
+        <span id="kpiBaseRate" class="kpi-sub">--</span>
+      </div>
+    </div>
+    <div class="kpi-cell">
+      <span class="kpi-label" data-i18n="kpiPrecisionLabel">İlk Yüzde On İsabet Oranı</span>
+      <div class="kpi-value-row">
+        <span id="kpiPrecisionTop10" class="kpi-value">--</span>
+        <span id="kpiRecallTop10" class="kpi-sub">--</span>
+      </div>
+    </div>
+    <div class="kpi-cell">
+      <span class="kpi-label" data-i18n="kpiAucLabel">Ayrıştırma Gücü PR ve ROC AUC</span>
+      <div class="kpi-value-row">
+        <span id="kpiPrRocAuc" class="kpi-value">--</span>
+        <span class="kpi-sub" data-i18n="kpiAucSub">Dönem Dışı Test</span>
+      </div>
+    </div>
+    <div class="kpi-cell">
+      <span class="kpi-label" data-i18n="kpiBrierLabel">Brier Olasılık Kalibrasyon Hatası</span>
+      <div class="kpi-value-row">
+        <span id="kpiBrierScore" class="kpi-value">--</span>
+        <span id="kpiUpdatedTime" class="kpi-sub">--</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="terminal-workspace">
+    <aside class="filter-rail" aria-label="Origination Filters">
+      <div class="rail-section">
+        <div class="rail-heading">
+          <span data-i18n="filterSearchTitle">Şirket veya Kod Arama</span>
+          <button type="button" id="btnResetFilters" class="rail-reset" data-i18n="btnReset">Sıfırla</button>
+        </div>
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="inputSearch" class="search-input" placeholder="Sembol, şirket veya sektör..." />
+        </div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-heading">
+          <span data-i18n="filterRegionTitle">Borsa ve Pazar Bölgesi</span>
+        </div>
+        <div id="chipContainerRegions" class="chip-group"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-heading">
+          <span data-i18n="filterSectorTitle">Sektör Kırılımı</span>
+        </div>
+        <div id="chipContainerSectors" class="chip-group"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="rail-heading">
+          <span data-i18n="filterSizeTitle">Piyasa Değeri Ölçeği</span>
+        </div>
+        <div id="chipContainerSizes" class="chip-group"></div>
+      </div>
+
+      <div class="rail-section">
+        <div class="range-row">
+          <div class="range-meta">
+            <span data-i18n="filterMinProbTitle">Minimum Satın Alınma Olasılığı</span>
+            <span id="valMinProb" class="mono">%0.0</span>
+          </div>
+          <input type="range" id="sliderMinProb" class="range-slider" min="0" max="70" step="1" value="0" />
+        </div>
+      </div>
+
+      <div class="rail-section">
+        <div class="range-row">
+          <div class="range-meta">
+            <span data-i18n="filterMaxLevTitle">Maksimum Net Borç / FAVÖK</span>
+            <span id="valMaxLeverage" class="mono">25.0x</span>
+          </div>
+          <input type="range" id="sliderMaxLeverage" class="range-slider" min="-5" max="25" step="0.5" value="25" />
+        </div>
+      </div>
+
+      <div class="rail-section">
+        <label class="toggle-row" for="chkOnlyLive">
+          <span data-i18n="filterOnlyLiveTitle">Yalnızca Canlı Piyasa Akışı</span>
+          <input type="checkbox" id="chkOnlyLive" />
+        </label>
+      </div>
+    </aside>
+
+    <main class="view-stage">
+      <!-- VIEW 1: Target Screener Terminal -->
+      <section id="view-screener" class="view-panel active">
+        <div class="terminal-card">
+          <div class="card-header">
+            <span class="card-title" data-i18n="tableMainTitle">Yıllık Satın Alınma Olasılığına Göre Sıralı Hedef Şirketler</span>
+            <span id="tableCountMeta" class="card-meta">Detaylı analiz için tablodan bir şirkete tıklayın</span>
+          </div>
+          <div class="table-scroll">
+            <table class="fin-table" id="targetsTable">
+              <thead>
+                <tr>
+                  <th class="sortable num-col" data-sort="rank" data-i18n="thRank">Sıra</th>
+                  <th data-i18n="thTicker">Sembol</th>
+                  <th data-i18n="thCompany">Şirket Adı</th>
+                  <th data-i18n="thRegion">Pazar Bölgesi</th>
+                  <th data-i18n="thSector">Sektör</th>
+                  <th data-i18n="thSize">Ölçek</th>
+                  <th class="sortable num-col" data-sort="probability_pct" data-i18n="thProb">Satılma Olasılığı</th>
+                  <th class="sortable num-col" data-sort="market_cap_usd_m" data-i18n="thMcap">Piyasa Değeri M$</th>
+                  <th class="sortable num-col" data-sort="ev_to_ebitda" data-i18n="thEvEbitda">FD / FAVÖK</th>
+                  <th class="sortable num-col" data-sort="sector_discount_pct" data-i18n="thDiscount">Sektör İskontosu</th>
+                  <th class="sortable num-col" data-sort="net_debt_to_ebitda" data-i18n="thLeverage">Net Borç / FAVÖK</th>
+                  <th class="sortable num-col" data-sort="fcf_to_assets_pct" data-i18n="thFcf">Serbest Nakit / Varlık</th>
+                  <th data-i18n="thRationale">Birincil Yatırım Gerekçesi</th>
+                </tr>
+              </thead>
+              <tbody id="targetsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="grid-2col">
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="chartSectorTitle">Sektörlere Göre Ortalama Satın Alınma Olasılığı</span>
+              <span class="card-meta" data-i18n="chartSectorMeta">Bölgesel Normlu Dağılım</span>
+            </div>
+            <div class="chart-box">
+              <canvas id="canvasSectorProb"></canvas>
+            </div>
+          </div>
+
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="chartScatterTitle">FD / FAVÖK Çarpanı ve Satın Alınma Olasılığı İlişkisi</span>
+              <span class="card-meta" data-i18n="chartScatterMeta">Değerleme İskontosu Haritası</span>
+            </div>
+            <div class="chart-box">
+              <canvas id="canvasValuationScatter"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 2: Single-Company XAI & Regional Benchmark -->
+      <section id="view-deepdive" class="view-panel">
+        <div class="target-selector-bar">
+          <div>
+            <div class="card-title" id="deepDiveTitle">Seçili Hedef Şirket Analizi</div>
+            <div class="brand-subtitle" id="deepDiveSubtitle">Bölgesel emsal çarpan kıyaslaması ve SHAP nedensel faktör ayrıştırması</div>
+          </div>
+          <select id="selectTargetTicker" class="target-select" aria-label="Target Company Selector"></select>
+        </div>
+
+        <div class="kpi-ribbon" style="border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden;">
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="ddKpiProb">Yıllık Satın Alınma Olasılığı</span>
+            <div class="kpi-value-row">
+              <span id="ddProb" class="kpi-value">--</span>
+              <span id="ddRank" class="kpi-sub gold">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="ddKpiMcap">Piyasa Değeri ve Firma Değeri</span>
+            <div class="kpi-value-row">
+              <span id="ddMcapEv" class="kpi-value">--</span>
+              <span id="ddSize" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="ddKpiEv">FD / FAVÖK ve Sektör İskontosu</span>
+            <div class="kpi-value-row">
+              <span id="ddEvEbitda" class="kpi-value">--</span>
+              <span id="ddDiscount" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="ddKpiLev">Net Borç / FAVÖK</span>
+            <div class="kpi-value-row">
+              <span id="ddLeverage" class="kpi-value">--</span>
+              <span id="ddFcf" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="ddKpiGrowth">Yıllık Ciro Büyümesi ve Marj</span>
+            <div class="kpi-value-row">
+              <span id="ddGrowth" class="kpi-value">--</span>
+              <span id="ddMargin" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="ddKpiMarket">Pazar ve Raporlama Birimi</span>
+            <div class="kpi-value-row">
+              <span id="ddRegion" class="kpi-value" style="font-size: 14px;">--</span>
+              <span id="ddCurrency" class="kpi-sub">--</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2col">
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="ddPosTitle">Satın Alınma Olasılığını Artıran Üç Temel Faktör</span>
+              <span class="card-meta" data-i18n="ddPosMeta">Pozitif SHAP Katkısı</span>
+            </div>
+            <div id="listPositiveDrivers" class="driver-list"></div>
+          </div>
+
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="ddNegTitle">Satın Alınma Olasılığını Sınırlayan Üç Temel Faktör</span>
+              <span class="card-meta" data-i18n="ddNegMeta">Negatif SHAP Etkisi</span>
+            </div>
+            <div id="listNegativeDeterrents" class="driver-list"></div>
+          </div>
+        </div>
+
+        <div class="grid-deepdive">
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="ddShapTitle">Finansal Faktörlerin SHAP Model Katkı Dağılımı</span>
+              <span class="card-meta" data-i18n="ddShapMeta">En Etkili On İki Değişken</span>
+            </div>
+            <div class="chart-box-tall">
+              <canvas id="canvasShapBars"></canvas>
+            </div>
+          </div>
+
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" id="peerTableHeader">Bölgesel Sektör Medyanı Kıyaslama Tablosu</span>
+              <span class="card-meta" data-i18n="ddPeerMeta">Emsal Sapma ve Standart Z-Skoru</span>
+            </div>
+            <div class="table-scroll" style="max-height: 420px;">
+              <table class="fin-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="thPeerMetric">Finansal Gösterge</th>
+                    <th class="num-col" data-i18n="thPeerCompany">Şirket Değeri</th>
+                    <th class="num-col" data-i18n="thPeerMedian">Bölgesel Medyan</th>
+                    <th class="num-col" data-i18n="thPeerDiff">Medyana Göre Fark</th>
+                    <th class="num-col" data-i18n="thPeerZ">Bölgesel Z-Skoru</th>
+                  </tr>
+                </thead>
+                <tbody id="peerBenchmarkBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: Model Backtest & Calibration -->
+      <section id="view-backtest" class="view-panel">
+        <div class="terminal-card">
+          <div class="card-header">
+            <span class="card-title" data-i18n="btTableTitle">Model Ailesi ve Sınıf Dengesizliği Stratejileri Karşılaştırması</span>
+            <span class="card-meta" data-i18n="btTableMeta">Zamana Dayalı Dönem Dışı Test Sonuçları</span>
+          </div>
+          <div class="table-scroll">
+            <table class="fin-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thBtModel">Model Mimarisi</th>
+                  <th data-i18n="thBtStrategy">Dengesizlik Yöntemi</th>
+                  <th data-i18n="thBtCalib">Olasılık Kalibrasyonu</th>
+                  <th class="num-col">PR-AUC</th>
+                  <th class="num-col">ROC-AUC</th>
+                  <th class="num-col" data-i18n="thBtBrier">Brier Skoru</th>
+                  <th class="num-col" data-i18n="thBtLift10">İlk Yüzde On Lift</th>
+                  <th class="num-col" data-i18n="thBtPrec10Pct">İlk Yüzde On İsabet</th>
+                  <th class="num-col" data-i18n="thBtRec10Pct">İlk Yüzde On Yakalama</th>
+                  <th class="num-col" data-i18n="thBtP10">İlk On Şirket İsabeti</th>
+                  <th class="num-col" data-i18n="thBtP25">İlk Yirmi Beş İsabeti</th>
+                </tr>
+              </thead>
+              <tbody id="modelComparisonBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="grid-2col">
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="btLiftChartTitle">Ondalık Dilimlere Göre M&amp;A Yakalama Çarpanı</span>
+              <span class="card-meta" data-i18n="btLiftChartMeta">Birinci Dilim En Yüksek Olasılıklı Yüzde On</span>
+            </div>
+            <div class="chart-box">
+              <canvas id="canvasDecileLift"></canvas>
+            </div>
+          </div>
+
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="btCalChartTitle">Olasılık Kalibrasyon Güvenilirlik Eğrisi</span>
+              <span class="card-meta" data-i18n="btCalChartMeta">Tahmin Edilen Olasılık ve Gerçekleşen Frekans</span>
+            </div>
+            <div class="chart-box">
+              <canvas id="canvasCalibrationCurve"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="terminal-card">
+          <div class="card-header">
+            <span class="card-title" data-i18n="btDecileTableTitle">Ondalık Dilim Bazında Kümülatif Yakalama Tablosu</span>
+            <span class="card-meta" data-i18n="btDecileTableMeta">Sıralama Performansı</span>
+          </div>
+          <div class="table-scroll">
+            <table class="fin-table">
+              <thead>
+                <tr>
+                  <th class="num-col" data-i18n="thDecile">Olasılık Dilimi</th>
+                  <th class="num-col" data-i18n="thDecCompanies">Şirket Sayısı</th>
+                  <th class="num-col" data-i18n="thDecAcquired">Gerçekleşen M&amp;A</th>
+                  <th class="num-col" data-i18n="thDecPred">Ortalama Tahmini Olasılık</th>
+                  <th class="num-col" data-i18n="thDecActual">Gerçekleşen M&amp;A Oranı</th>
+                  <th class="num-col" data-i18n="thDecLift">Lift Çarpanı</th>
+                  <th class="num-col" data-i18n="thDecRecall">Kümülatif Yakalama Oranı</th>
+                </tr>
+              </thead>
+              <tbody id="decileTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

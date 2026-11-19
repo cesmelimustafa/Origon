@@ -1,0 +1,20 @@
+# Python byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test & coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local virtual environments & secrets
+.env
+.venv/
+venv/
+ENV/
+
+# Local agent skills & Windows machine-specific shortcuts
+.agent/
+*.lnk
+*.tmp
