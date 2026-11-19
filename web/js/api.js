@@ -1,5 +1,5 @@
 /**
- * Origon REST API Client Layer (supports lang = 'tr' | 'en')
+ * Origon REST API Client Layer (supports lang = 'tr' | 'en' and custom target payloads)
  */
 
 export async function fetchMetadata(lang = 'tr') {
@@ -42,6 +42,36 @@ export async function fetchTargetDetail(ticker, lang = 'tr') {
 export async function fetchBacktest(lang = 'tr') {
   const res = await fetch(`/api/v1/backtest?lang=${encodeURIComponent(lang)}`);
   if (!res.ok) throw new Error('Failed to load backtest metrics');
+  return res.json();
+}
+
+export async function fetchBuyerMatches(targetPayload = {}, lang = 'tr') {
+  const res = await fetch(`/api/v1/advisory/buyers?lang=${encodeURIComponent(lang)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(targetPayload),
+  });
+  if (!res.ok) throw new Error('Failed to load buyer matching results');
+  return res.json();
+}
+
+export async function fetchPremiumRecommendation(targetPayload = {}, lang = 'tr') {
+  const res = await fetch(`/api/v1/advisory/premium?lang=${encodeURIComponent(lang)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(targetPayload),
+  });
+  if (!res.ok) throw new Error('Failed to load acquisition premium recommendation');
+  return res.json();
+}
+
+export async function fetchLboSimulation(lboPayload = {}, lang = 'tr') {
+  const res = await fetch(`/api/v1/advisory/lbo?lang=${encodeURIComponent(lang)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(lboPayload),
+  });
+  if (!res.ok) throw new Error('Failed to run LBO simulation');
   return res.json();
 }
 

@@ -19,7 +19,7 @@
           <span class="brand-name">ORIGON</span>
           <span class="brand-tag" data-i18n="brandTag">M&amp;A ANALİTİK</span>
         </div>
-        <span class="brand-subtitle" data-i18n="brandSubtitle">Kurumsal Hedef Şirket Tahmin ve Karar Destek Terminali</span>
+        <span class="brand-subtitle" data-i18n="brandSubtitle">Kurumsal Yatırım Bankacılığı Karar Destek Terminali</span>
       </div>
     </div>
 
@@ -31,13 +31,37 @@
           <rect x="14" y="14" width="7" height="7"></rect>
           <rect x="3" y="14" width="7" height="7"></rect>
         </svg>
-        <span data-i18n="navScreener">Hedef Tarama Terminali</span>
+        <span data-i18n="navScreener">Hedef Tarama</span>
       </button>
       <button type="button" class="nav-tab" data-view="deepdive">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
           <path d="M2 12h4l3-9 5 18 3-9h5"></path>
         </svg>
-        <span data-i18n="navDeepDive">Şirket Analizi ve Karar Gerekçesi</span>
+        <span data-i18n="navDeepDive">Şirket Analizi</span>
+      </button>
+      <button type="button" class="nav-tab" data-view="buyers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <span data-i18n="navBuyers">Alıcı Eşleştirme</span>
+      </button>
+      <button type="button" class="nav-tab" data-view="premium">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+          <polyline points="16 7 22 7 22 13"></polyline>
+        </svg>
+        <span data-i18n="navPremium">Prim ve Teklif Fiyatı</span>
+      </button>
+      <button type="button" class="nav-tab" data-view="lbo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8" y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+        <span data-i18n="navLbo">LBO ve Risk Simülatörü</span>
       </button>
       <button type="button" class="nav-tab" data-view="backtest">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -45,7 +69,7 @@
           <line x1="12" y1="20" x2="12" y2="4"></line>
           <line x1="6" y1="20" x2="6" y2="14"></line>
         </svg>
-        <span data-i18n="navBacktest">Model Doğrulama ve Kalibrasyon</span>
+        <span data-i18n="navBacktest">Model Doğrulama</span>
       </button>
     </nav>
 
@@ -180,6 +204,96 @@
     </aside>
 
     <main class="view-stage">
+      <!-- Kalıcı Aktif Hedef Bağlamı ve Zincirleme Modül Aktarım Çubuğu -->
+      <div class="context-workflow-bar">
+        <div class="context-target-info">
+          <span id="ctxTargetBadge" class="context-badge" data-i18n="ctxBadgePublic">AKTİF HEDEF</span>
+          <span id="ctxTargetTitle" class="context-title">--</span>
+          <div class="context-metrics">
+            <span id="ctxTargetRegion">--</span>
+            <span id="ctxTargetSector">--</span>
+            <span id="ctxTargetEv">FD: --</span>
+            <span id="ctxTargetEbitda">FAVÖK: --</span>
+          </div>
+        </div>
+        <div class="context-actions">
+          <button type="button" class="btn-chain" id="btnChainBuyers" data-i18n="btnChainBuyers">Alıcı Eşleştirmeye Aktar</button>
+          <button type="button" class="btn-chain" id="btnChainPremium" data-i18n="btnChainPremium">Teklif Fiyatlamasına Aktar</button>
+          <button type="button" class="btn-chain" id="btnChainLbo" data-i18n="btnChainLbo">LBO Simülatörüne Aktar</button>
+          <button type="button" class="btn-chain gold-cta" id="btnToggleCustomTarget" data-i18n="btnCustomTarget">Özel Şirket Parametresi Gir</button>
+        </div>
+      </div>
+
+      <!-- Özel Şirket Parametre Giriş Çekmecesi -->
+      <div id="customTargetDrawer" class="custom-target-drawer">
+        <div class="card-header" style="padding: 0 0 8px 0; background: transparent;">
+          <span class="card-title" data-i18n="customDrawerTitle">Halka Açık Olmayan Özel Şirket Finansal Parametre Girişi</span>
+          <span class="card-meta" data-i18n="customDrawerMeta">Tüm değerler Milyon ABD Doları bazında işlenir ve üç modüle aynı anda aktarılır</span>
+        </div>
+        <div class="custom-form-grid">
+          <div class="form-field">
+            <label for="custName" data-i18n="lblCustName">Şirket Adı</label>
+            <input type="text" id="custName" value="Anadolu Endüstriyel Sistemler" />
+          </div>
+          <div class="form-field">
+            <label for="custRegion" data-i18n="lblCustRegion">Pazar Bölgesi</label>
+            <select id="custRegion">
+              <option value="Turkey (Borsa İstanbul - BIST)">Türkiye Borsa İstanbul</option>
+              <option value="Europe (Euronext/XETRA/LSE)">Avrupa Pazarı</option>
+              <option value="US (NYSE/NASDAQ)">ABD Pazarı</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="custSector" data-i18n="lblCustSector">Sektör</label>
+            <select id="custSector">
+              <option value="Industrials">Endüstriyel</option>
+              <option value="Technology">Teknoloji</option>
+              <option value="Healthcare">Sağlık</option>
+              <option value="Consumer Discretionary">Tüketici Ürünleri</option>
+              <option value="Consumer Staples">Temel Tüketim</option>
+              <option value="Energy">Enerji</option>
+              <option value="Financials">Finansal Kurumlar</option>
+              <option value="Materials">Temel Maddeler</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="custRev" data-i18n="lblCustRev">Yıllık Ciro M$</label>
+            <input type="number" id="custRev" value="540" min="10" step="10" />
+          </div>
+          <div class="form-field">
+            <label for="custEbitda" data-i18n="lblCustEbitda">Yıllık FAVÖK M$</label>
+            <input type="number" id="custEbitda" value="115" min="2" step="5" />
+          </div>
+          <div class="form-field">
+            <label for="custMcap" data-i18n="lblCustMcap">Baz Özsermaye Değeri M$</label>
+            <input type="number" id="custMcap" value="820" min="15" step="15" />
+          </div>
+          <div class="form-field">
+            <label for="custDebt" data-i18n="lblCustDebt">Toplam Borç M$</label>
+            <input type="number" id="custDebt" value="190" min="0" step="10" />
+          </div>
+          <div class="form-field">
+            <label for="custCash" data-i18n="lblCustCash">Nakit ve Benzerleri M$</label>
+            <input type="number" id="custCash" value="65" min="1" step="5" />
+          </div>
+          <div class="form-field">
+            <label for="custGrowth" data-i18n="lblCustGrowth">Yıllık Ciro Büyümesi %</label>
+            <input type="number" id="custGrowth" value="16" min="-30" max="120" step="1" />
+          </div>
+          <div class="form-field">
+            <label for="custVol" data-i18n="lblCustVol">90 Günlük Volatilite %</label>
+            <input type="number" id="custVol" value="28" min="10" max="80" step="1" />
+          </div>
+          <div class="form-field">
+            <label for="custDrawdown" data-i18n="lblCustDrawdown">Zirveye Uzaklık %</label>
+            <input type="number" id="custDrawdown" value="-19" min="-70" max="0" step="1" />
+          </div>
+          <div class="form-field" style="justify-content: flex-end;">
+            <button type="button" id="btnApplyCustomTarget" class="btn-chain gold-cta" style="height: 31px;" data-i18n="btnApplyCustom">Tüm Modüllerde Analiz Et</button>
+          </div>
+        </div>
+      </div>
+
       <!-- VIEW 1: Target Screener Terminal -->
       <section id="view-screener" class="view-panel active">
         <div class="terminal-card">
@@ -341,7 +455,338 @@
         </div>
       </section>
 
-      <!-- VIEW 3: Model Backtest & Calibration -->
+      <!-- VIEW 3 (MODULE 2): Strategic & Financial Buyer Matching Engine -->
+      <section id="view-buyers" class="view-panel">
+        <div class="kpi-ribbon" style="border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden;">
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="bmKpiDealEv">Tahmini İşlem Firma Değeri</span>
+            <div class="kpi-value-row">
+              <span id="bmDealEv" class="kpi-value">--</span>
+              <span class="kpi-sub gold" data-i18n="bmKpiDealSub">Kontrol Primi Dahil</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="bmKpiEquityTicket">Gerekli Fon Özsermaye Bileti</span>
+            <div class="kpi-value-row">
+              <span id="bmEquityTicket" class="kpi-value">--</span>
+              <span class="kpi-sub" data-i18n="bmKpiEquitySub">LBO Sermaye Payı</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="bmKpiStratCount">Taranan Stratejik Alıcı</span>
+            <div class="kpi-value-row">
+              <span id="bmStratPool" class="kpi-value">--</span>
+              <span class="kpi-sub" data-i18n="bmKpiStratSub">Kurumsal Bilanço Havuzu</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="bmKpiPeCount">Özel Sermaye Fonu Kataloğu</span>
+            <div class="kpi-value-row">
+              <span id="bmPePool" class="kpi-value">40</span>
+              <span class="kpi-sub" data-i18n="bmKpiPeSub">SEC Form ADV Profili</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="bmKpiTopBuyer">En Yüksek Uyumlu Alıcı</span>
+            <div class="kpi-value-row">
+              <span id="bmTopBuyerName" class="kpi-value" style="font-size: 13.5px;">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="bmKpiTopScore">Lider Eşleşme Skoru</span>
+            <div class="kpi-value-row">
+              <span id="bmTopBuyerScore" class="kpi-value">--</span>
+              <span id="bmTopBuyerType" class="kpi-sub positive">--</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-deepdive">
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="bmTableTitle">En Yüksek Uyum Skoruna Sahip İlk Beş Alıcı Adayı</span>
+              <div class="chip-group">
+                <button type="button" class="filter-chip active" data-buyer-cat="top_overall" data-i18n="bmFilterAll">Tüm Alıcılar</button>
+                <button type="button" class="filter-chip" data-buyer-cat="top_strategic" data-i18n="bmFilterStrat">Stratejik Alıcılar</button>
+                <button type="button" class="filter-chip" data-buyer-cat="top_financial" data-i18n="bmFilterPe">Özel Sermaye Fonları</button>
+              </div>
+            </div>
+            <div class="table-scroll" style="max-height: 430px;">
+              <table class="fin-table">
+                <thead>
+                  <tr>
+                    <th class="num-col" data-i18n="thBmRank">Sıra</th>
+                    <th data-i18n="thBmName">Alıcı Kurum veya Fon Adı</th>
+                    <th data-i18n="thBmType">Alıcı Tipi</th>
+                    <th data-i18n="thBmRegion">Bölge</th>
+                    <th class="num-col" data-i18n="thBmFirepower">Alım Kapasitesi M$</th>
+                    <th class="num-col" data-i18n="thBmScore">Toplam Uyum</th>
+                    <th data-i18n="thBmSubscores">Alt Boyut Kırılımı</th>
+                  </tr>
+                </thead>
+                <tbody id="buyerMatchTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="bmChartTitle">İlk Beş Alıcı Adayının Dört Boyutlu Skor Kırılımı</span>
+              <span class="card-meta" data-i18n="bmChartMeta">Metin Benzerliği, Kapasite, Eğilim ve Sinerji</span>
+            </div>
+            <div class="chart-box-tall">
+              <canvas id="canvasBuyerBreakdown"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="terminal-card">
+          <div class="card-header">
+            <span class="card-title" data-i18n="bmRationaleTitle">İlk Beş Alıcı Adayı İçin Stratejik ve Finansal Eşleşme Gerekçeleri</span>
+            <span class="card-meta" data-i18n="bmRationaleMeta">Kosinüs Vektör Uyumu ve Bilanço Borçlanma Kapasitesi Analizi</span>
+          </div>
+          <div id="buyerRationalesList" class="driver-list"></div>
+        </div>
+      </section>
+
+      <!-- VIEW 4 (MODULE 3): Acquisition Premium & Offer Price Engine -->
+      <section id="view-premium" class="view-panel">
+        <div class="kpi-ribbon" style="border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden;">
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="prKpiBaseMcap">Mevcut Özsermaye ve Firma Değeri</span>
+            <div class="kpi-value-row">
+              <span id="prStandaloneMcap" class="kpi-value">--</span>
+              <span id="prStandaloneEv" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="prKpiMinBand">Minimum Teklif Primi ve Değeri</span>
+            <div class="kpi-value-row">
+              <span id="prMinPrem" class="kpi-value">--</span>
+              <span id="prMinEv" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="prKpiMedBand">Önerilen Medyan Teklif Primi</span>
+            <div class="kpi-value-row">
+              <span id="prMedPrem" class="kpi-value">--</span>
+              <span id="prMedEv" class="kpi-sub gold">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="prKpiMaxBand">Maksimum Teklif Primi ve Değeri</span>
+            <div class="kpi-value-row">
+              <span id="prMaxPrem" class="kpi-value">--</span>
+              <span id="prMaxEv" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="prKpiTxMultiple">Zımni İşlem FD / FAVÖK Bandı</span>
+            <div class="kpi-value-row">
+              <span id="prImpliedMultiples" class="kpi-value">--</span>
+              <span id="prBaseMultiple" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="prKpiBoardProb">Medyan Teklifte Kabul Olasılığı</span>
+            <div class="kpi-value-row">
+              <span id="prBoardProb" class="kpi-value">--</span>
+              <button type="button" id="btnSendOfferToLbo" class="btn-chain gold-cta" style="height: 24px; font-size: 10.5px;" data-i18n="btnOfferToLbo">LBO Modülüne Aktar</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2col">
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="prCurveTitle">Teklif Primi Yüzdesine Göre Yönetim Kurulu Kabul Olasılığı Eğrisi</span>
+              <span class="card-meta" data-i18n="prCurveMeta">Kantil Dağılımı ve 52 Haftalık Zirve Çıpası</span>
+            </div>
+            <div class="chart-box">
+              <canvas id="canvasAcceptanceCurve"></canvas>
+            </div>
+          </div>
+
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="prDriversTitle">Önerilen Kontrol Primini Belirleyen Değişkenlerin Etki Kırılımı</span>
+              <span class="card-meta" data-i18n="prDriversMeta">Sektör Baz Primine Eklenen Yüzde Puan Katkısı</span>
+            </div>
+            <div class="chart-box">
+              <canvas id="canvasPremiumDrivers"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="terminal-card">
+          <div class="card-header">
+            <span class="card-title" data-i18n="prPrecedentTitle">Aynı Sektördeki Emsal Geçmiş M&amp;A İşlemleri ve Çarpan Kıyaslaması</span>
+            <span class="card-meta" data-i18n="prPrecedentMeta">Tarihsel İşlem Veri Tablosu Eşleşmeleri</span>
+          </div>
+          <div class="table-scroll">
+            <table class="fin-table">
+              <thead>
+                <tr>
+                  <th data-i18n="thPrDealId">İşlem Kodu</th>
+                  <th class="num-col" data-i18n="thPrYear">Yıl</th>
+                  <th data-i18n="thPrTarget">Hedef Şirket</th>
+                  <th data-i18n="thPrAcquirer">Alıcı Kurum veya Fon</th>
+                  <th data-i18n="thPrSector">Sektör</th>
+                  <th class="num-col" data-i18n="thPrDealEv">İşlem Büyüklüğü M$</th>
+                  <th class="num-col" data-i18n="thPrPreMult">İşlem Öncesi FD/FAVÖK</th>
+                  <th class="num-col" data-i18n="thPrTxMult">İşlem FD/FAVÖK</th>
+                  <th class="num-col" data-i18n="thPrPrem">Ödenen Kontrol Primi</th>
+                </tr>
+              </thead>
+              <tbody id="precedentDealsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 5 (MODULE 4): 5-Year Dynamic LBO & 5,000-Iteration Monte Carlo Simulator -->
+      <section id="view-lbo" class="view-panel">
+        <div class="lbo-controls-grid">
+          <div class="range-row">
+            <div class="range-meta">
+              <span data-i18n="lboCtrlEv">Giriş İşlem Değeri M$</span>
+              <span id="valLboEv" class="mono">1500</span>
+            </div>
+            <input type="range" id="sliderLboEv" class="range-slider" min="50" max="25000" step="25" value="1500" />
+          </div>
+          <div class="range-row">
+            <div class="range-meta">
+              <span data-i18n="lboCtrlLev">Toplam Borç / FAVÖK</span>
+              <span id="valLboLev" class="mono">4.5x</span>
+            </div>
+            <input type="range" id="sliderLboLev" class="range-slider" min="2.0" max="6.5" step="0.25" value="4.5" />
+          </div>
+          <div class="range-row">
+            <div class="range-meta">
+              <span data-i18n="lboCtrlSenShare">Kıdemli Kredi Payı</span>
+              <span id="valLboSenShare" class="mono">%70</span>
+            </div>
+            <input type="range" id="sliderLboSenShare" class="range-slider" min="40" max="90" step="5" value="70" />
+          </div>
+          <div class="range-row">
+            <div class="range-meta">
+              <span data-i18n="lboCtrlSenRate">Kıdemli Kredi Faizi</span>
+              <span id="valLboSenRate" class="mono">%6.5</span>
+            </div>
+            <input type="range" id="sliderLboSenRate" class="range-slider" min="3.0" max="12.0" step="0.25" value="6.5" />
+          </div>
+          <div class="range-row">
+            <div class="range-meta">
+              <span data-i18n="lboCtrlExitMult">Beşinci Yıl Çıkış Çarpanı</span>
+              <span id="valLboExitMult" class="mono">10.5x</span>
+            </div>
+            <input type="range" id="sliderLboExitMult" class="range-slider" min="4.5" max="20.0" step="0.5" value="10.5" />
+          </div>
+          <div class="range-row">
+            <div class="range-meta">
+              <span data-i18n="lboCtrlCashBuf">Min Nakit Tamponu Ciro %</span>
+              <span id="valLboCashBuf" class="mono">%4.0</span>
+            </div>
+            <input type="range" id="sliderLboCashBuf" class="range-slider" min="2.0" max="10.0" step="0.5" value="4.0" />
+          </div>
+        </div>
+
+        <div class="kpi-ribbon" style="border: 1px solid var(--border-subtle); border-radius: 6px; overflow: hidden;">
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="lboKpiIrr">Beklenen ve Medyan IRR</span>
+            <div class="kpi-value-row">
+              <span id="lboMedIrr" class="kpi-value">--</span>
+              <span id="lboP10P90Irr" class="kpi-sub gold">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="lboKpiMoic">Yatırılan Sermaye Çarpanı MoIC</span>
+            <div class="kpi-value-row">
+              <span id="lboMedMoic" class="kpi-value">--</span>
+              <span id="lboP10P90Moic" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="lboKpiHurdle">Eşik Getiri Yakalama Olasılığı</span>
+            <div class="kpi-value-row">
+              <span id="lboProbHurdle" class="kpi-value">--</span>
+              <span class="kpi-sub positive" data-i18n="lboKpiHurdleSub">Hedef IRR &ge; %20</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="lboKpiDefault">Stres Nakit Sıkışması Olasılığı</span>
+            <div class="kpi-value-row">
+              <span id="lboStressDefault" class="kpi-value">--</span>
+              <span id="lboLossProb" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="lboKpiCapStruct">Sponsor Özsermaye ve Borç</span>
+            <div class="kpi-value-row">
+              <span id="lboEqDebtSplit" class="kpi-value">--</span>
+              <span id="lboDebtSharePct" class="kpi-sub">--</span>
+            </div>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label" data-i18n="lboKpiMinCash">Korunan Başlangıç Nakit Tamponu</span>
+            <div class="kpi-value-row">
+              <span id="lboMinCashVal" class="kpi-value">--</span>
+              <span class="kpi-sub" data-i18n="lboKpiMinCashSub">Sıfırlanamaz Kasa Sınırı</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-deepdive">
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="lboHistTitle">5.000 İterasyonlu Monte Carlo Yıllık İç Verim Oranı IRR Dağılımı</span>
+              <span class="card-meta" data-i18n="lboHistMeta">Cholesky Korelasyonlu Stokastik Simülasyon</span>
+            </div>
+            <div class="chart-box-tall">
+              <canvas id="canvasIrrHistogram"></canvas>
+            </div>
+          </div>
+
+          <div class="terminal-card">
+            <div class="card-header">
+              <span class="card-title" data-i18n="lboSensTitle">Giriş Borçluluk Oranı ve Çıkış Çarpanı Getiri Duyarlılık Matrisi</span>
+              <span class="card-meta" data-i18n="lboSensMeta">Hücre Değerleri: Yıllık IRR Yüzdesi ve MoIC Çarpanı</span>
+            </div>
+            <div class="table-scroll" style="max-height: 420px;">
+              <table class="fin-table sens-table" id="lboSensitivityTable"></table>
+            </div>
+          </div>
+        </div>
+
+        <div class="terminal-card">
+          <div class="card-header">
+            <span class="card-title" data-i18n="lboSchedTitle">Beş Yıllık Dinamik LBO Nakit Akışı, Minimum Nakit Tamponu ve Otomatik Borç Azaltım Tablosu</span>
+            <span class="card-meta" data-i18n="lboSchedMeta">Kıdemli ve İkincil Kredi Dilimleri Nakit Süpürme Projeksiyonu</span>
+          </div>
+          <div class="table-scroll">
+            <table class="fin-table">
+              <thead>
+                <tr>
+                  <th class="num-col" data-i18n="thLboYr">Projeksiyon Yılı</th>
+                  <th class="num-col" data-i18n="thLboRev">Ciro M$</th>
+                  <th class="num-col" data-i18n="thLboEbitda">FAVÖK M$</th>
+                  <th class="num-col" data-i18n="thLboInt">Nakit Faiz Gideri M$</th>
+                  <th class="num-col" data-i18n="thLboFcf">Serbest Nakit Akışı M$</th>
+                  <th class="num-col" data-i18n="thLboBuffer">Min Nakit Tamponu M$</th>
+                  <th class="num-col" data-i18n="thLboSweep">Otomatik Borç Ödemesi M$</th>
+                  <th class="num-col" data-i18n="thLboSenEnd">Kalan Kıdemli Borç M$</th>
+                  <th class="num-col" data-i18n="thLboSubEnd">Kalan İkincil Borç M$</th>
+                  <th class="num-col" data-i18n="thLboCashEnd">Dönem Sonu Nakit M$</th>
+                  <th class="num-col" data-i18n="thLboNetLev">Net Borç / FAVÖK</th>
+                </tr>
+              </thead>
+              <tbody id="lboScheduleBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 6: Model Backtest & Calibration -->
       <section id="view-backtest" class="view-panel">
         <div class="terminal-card">
           <div class="card-header">

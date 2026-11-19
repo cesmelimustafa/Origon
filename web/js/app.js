@@ -1,19 +1,26 @@
 /**
- * Origon Institutional M&A Analytics Platform - Bilingual Client Application (TR / EN)
+ * Origon Institutional M&A Decision Support Platform - Unified 6-Module Client Application (TR / EN)
  */
 
 import {
   fetchBacktest,
+  fetchBuyerMatches,
+  fetchLboSimulation,
   fetchMetadata,
   fetchOverview,
+  fetchPremiumRecommendation,
   fetchTargetDetail,
   fetchTargets,
   triggerPipelineRefresh,
 } from './api.js';
 
 import {
+  renderAcceptanceCurveChart,
+  renderBuyerBreakdownChart,
   renderCalibrationCurveChart,
   renderDecileLiftChart,
+  renderIrrHistogramChart,
+  renderPremiumDriversChart,
   renderSectorProbabilityChart,
   renderShapDivergingChart,
   renderValuationScatterChart,
@@ -22,12 +29,35 @@ import {
 const I18N = {
   tr: {
     brandTag: 'M&A ANALİTİK',
-    brandSubtitle: 'Kurumsal Hedef Şirket Tahmin ve Karar Destek Terminali',
-    navScreener: 'Hedef Tarama Terminali',
-    navDeepDive: 'Şirket Analizi ve Karar Gerekçesi',
-    navBacktest: 'Model Doğrulama ve Kalibrasyon',
+    brandSubtitle: 'Kurumsal Yatırım Bankacılığı Karar Destek Terminali',
+    navScreener: 'Hedef Tarama',
+    navDeepDive: 'Şirket Analizi',
+    navBuyers: 'Alıcı Eşleştirme',
+    navPremium: 'Prim ve Teklif Fiyatı',
+    navLbo: 'LBO ve Risk Simülatörü',
+    navBacktest: 'Model Doğrulama',
     btnRefresh: 'Piyasa Verisini Güncelle',
     btnRefreshing: 'Veri Güncelleniyor...',
+    ctxBadgePublic: 'AKTİF HEDEF',
+    ctxBadgeCustom: 'ÖZEL ŞİRKET',
+    btnChainBuyers: 'Alıcı Eşleştirmeye Aktar',
+    btnChainPremium: 'Teklif Fiyatlamasına Aktar',
+    btnChainLbo: 'LBO Simülatörüne Aktar',
+    btnCustomTarget: 'Özel Şirket Parametresi Gir',
+    customDrawerTitle: 'Halka Açık Olmayan Özel Şirket Finansal Parametre Girişi',
+    customDrawerMeta: 'Tüm değerler Milyon ABD Doları bazında işlenir ve üç modüle aynı anda aktarılır',
+    lblCustName: 'Şirket Adı',
+    lblCustRegion: 'Pazar Bölgesi',
+    lblCustSector: 'Sektör',
+    lblCustRev: 'Yıllık Ciro M$',
+    lblCustEbitda: 'Yıllık FAVÖK M$',
+    lblCustMcap: 'Baz Özsermaye Değeri M$',
+    lblCustDebt: 'Toplam Borç M$',
+    lblCustCash: 'Nakit ve Benzerleri M$',
+    lblCustGrowth: 'Yıllık Ciro Büyümesi %',
+    lblCustVol: '90 Günlük Volatilite %',
+    lblCustDrawdown: 'Zirveye Uzaklık %',
+    btnApplyCustom: 'Tüm Modüllerde Analiz Et',
     kpiUniverseLabel: 'Taranan Şirket Evreni',
     kpiLiveSuffix: 'Canlı Akış',
     kpiHighConvLabel: 'Yüksek Öncelikli Adaylar',
@@ -49,7 +79,7 @@ const I18N = {
     filterMaxLevTitle: 'Maksimum Net Borç / FAVÖK',
     filterOnlyLiveTitle: 'Yalnızca Canlı Piyasa Akışı',
     tableMainTitle: 'Yıllık Satın Alınma Olasılığına Göre Sıralı Hedef Şirketler',
-    tableCountSuffix: 'şirket listeleniyor · Detaylı analiz için bir satıra tıklayın',
+    tableCountSuffix: 'şirket listeleniyor · Seçmek için bir satıra tıklayın',
     thRank: 'Sıra',
     thTicker: 'Sembol',
     thCompany: 'Şirket Adı',
@@ -90,6 +120,88 @@ const I18N = {
     thPeerMedian: 'Bölgesel Medyan',
     thPeerDiff: 'Medyana Göre Fark',
     thPeerZ: 'Bölgesel Z-Skoru',
+    bmKpiDealEv: 'Tahmini İşlem Firma Değeri',
+    bmKpiDealSub: 'Kontrol Primi Dahil',
+    bmKpiEquityTicket: 'Gerekli Fon Özsermaye Bileti',
+    bmKpiEquitySub: 'LBO Sermaye Payı',
+    bmKpiStratCount: 'Taranan Stratejik Alıcı',
+    bmKpiStratSub: 'Kurumsal Bilanço Havuzu',
+    bmKpiPeCount: 'Özel Sermaye Fonu Kataloğu',
+    bmKpiPeSub: 'SEC Form ADV Profili',
+    bmKpiTopBuyer: 'En Yüksek Uyumlu Alıcı',
+    bmKpiTopScore: 'Lider Eşleşme Skoru',
+    bmTableTitle: 'En Yüksek Uyum Skoruna Sahip İlk Beş Alıcı Adayı',
+    bmFilterAll: 'Tüm Alıcılar',
+    bmFilterStrat: 'Stratejik Alıcılar',
+    bmFilterPe: 'Özel Sermaye Fonları',
+    thBmRank: 'Sıra',
+    thBmName: 'Alıcı Kurum veya Fon Adı',
+    thBmType: 'Alıcı Tipi',
+    thBmRegion: 'Bölge',
+    thBmFirepower: 'Alım Kapasitesi M$',
+    thBmScore: 'Toplam Uyum',
+    thBmSubscores: 'Alt Boyut Kırılımı',
+    bmChartTitle: 'İlk Beş Alıcı Adayının Dört Boyutlu Skor Kırılımı',
+    bmChartMeta: 'Metin Benzerliği, Kapasite, Eğilim ve Sinerji',
+    bmRationaleTitle: 'İlk Beş Alıcı Adayı İçin Stratejik ve Finansal Eşleşme Gerekçeleri',
+    bmRationaleMeta: 'Kosinüs Vektör Uyumu ve Bilanço Borçlanma Kapasitesi Analizi',
+    subNlp: 'Metin ve Sektör',
+    subCap: 'Finansal Kapasite',
+    subProp: 'İşlem Eğilimi',
+    subSyn: 'Operasyonel Sinerji',
+    prKpiBaseMcap: 'Mevcut Özsermaye ve Firma Değeri',
+    prKpiMinBand: 'Minimum Teklif Primi ve Değeri',
+    prKpiMedBand: 'Önerilen Medyan Teklif Primi',
+    prKpiMaxBand: 'Maksimum Teklif Primi ve Değeri',
+    prKpiTxMultiple: 'Zımni İşlem FD / FAVÖK Bandı',
+    prKpiBoardProb: 'Medyan Teklifte Kabul Olasılığı',
+    btnOfferToLbo: 'LBO Modülüne Aktar',
+    prCurveTitle: 'Teklif Primi Yüzdesine Göre Yönetim Kurulu Kabul Olasılığı Eğrisi',
+    prCurveMeta: 'Kantil Dağılımı ve 52 Haftalık Zirve Çıpası',
+    prDriversTitle: 'Önerilen Kontrol Primini Belirleyen Değişkenlerin Etki Kırılımı',
+    prDriversMeta: 'Sektör Baz Primine Eklenen Yüzde Puan Katkısı',
+    prPrecedentTitle: 'Aynı Sektördeki Emsal Geçmiş M&A İşlemleri ve Çarpan Kıyaslaması',
+    prPrecedentMeta: 'Tarihsel İşlem Veri Tablosu Eşleşmeleri',
+    thPrDealId: 'İşlem Kodu',
+    thPrYear: 'Yıl',
+    thPrTarget: 'Hedef Şirket',
+    thPrAcquirer: 'Alıcı Kurum veya Fon',
+    thPrSector: 'Sektör',
+    thPrDealEv: 'İşlem Büyüklüğü M$',
+    thPrPreMult: 'İşlem Öncesi FD/FAVÖK',
+    thPrTxMult: 'İşlem FD/FAVÖK',
+    thPrPrem: 'Ödenen Kontrol Primi',
+    lboCtrlEv: 'Giriş İşlem Değeri M$',
+    lboCtrlLev: 'Toplam Borç / FAVÖK',
+    lboCtrlSenShare: 'Kıdemli Kredi Payı',
+    lboCtrlSenRate: 'Kıdemli Kredi Faizi',
+    lboCtrlExitMult: 'Beşinci Yıl Çıkış Çarpanı',
+    lboCtrlCashBuf: 'Min Nakit Tamponu Ciro %',
+    lboKpiIrr: 'Beklenen ve Medyan IRR',
+    lboKpiMoic: 'Yatırılan Sermaye Çarpanı MoIC',
+    lboKpiHurdle: 'Eşik Getiri Yakalama Olasılığı',
+    lboKpiHurdleSub: 'Hedef IRR ≥ %20',
+    lboKpiDefault: 'Stres Nakit Sıkışması Olasılığı',
+    lboKpiCapStruct: 'Sponsor Özsermaye ve Borç',
+    lboKpiMinCash: 'Korunan Başlangıç Nakit Tamponu',
+    lboKpiMinCashSub: 'Sıfırlanamaz Kasa Sınırı',
+    lboHistTitle: '5.000 İterasyonlu Monte Carlo Yıllık İç Verim Oranı IRR Dağılımı',
+    lboHistMeta: 'Cholesky Korelasyonlu Stokastik Simülasyon',
+    lboSensTitle: 'Giriş Borçluluk Oranı ve Çıkış Çarpanı Getiri Duyarlılık Matrisi',
+    lboSensMeta: 'Hücre Değerleri: Yıllık IRR Yüzdesi ve MoIC Çarpanı',
+    lboSchedTitle: 'Beş Yıllık Dinamik LBO Nakit Akışı, Minimum Nakit Tamponu ve Otomatik Borç Azaltım Tablosu',
+    lboSchedMeta: 'Kıdemli ve İkincil Kredi Dilimleri Nakit Süpürme Projeksiyonu',
+    thLboYr: 'Projeksiyon Yılı',
+    thLboRev: 'Ciro M$',
+    thLboEbitda: 'FAVÖK M$',
+    thLboInt: 'Nakit Faiz Gideri M$',
+    thLboFcf: 'Serbest Nakit Akışı M$',
+    thLboBuffer: 'Min Nakit Tamponu M$',
+    thLboSweep: 'Otomatik Borç Ödemesi M$',
+    thLboSenEnd: 'Kalan Kıdemli Borç M$',
+    thLboSubEnd: 'Kalan İkincil Borç M$',
+    thLboCashEnd: 'Dönem Sonu Nakit M$',
+    thLboNetLev: 'Net Borç / FAVÖK',
     btTableTitle: 'Model Ailesi ve Sınıf Dengesizliği Stratejileri Karşılaştırması',
     btTableMeta: 'Zamana Dayalı Dönem Dışı Test Sonuçları',
     thBtModel: 'Model Mimarisi',
@@ -119,15 +231,42 @@ const I18N = {
     sectorWord: 'Sektörü',
     peerHeaderJoin: 've',
     peerHeaderSuffix: 'Medyanı Kıyaslaması',
+    yearPrefix: 'Yıl',
+    sensCorner: 'Kaldıraç / Çıkış',
+    lossProbPrefix: 'Anapara Kaybı',
+    debtSharePrefix: 'Borç Oranı',
   },
   en: {
     brandTag: 'M&A ANALYTICS',
-    brandSubtitle: 'Institutional Acquisition Target Prediction and Decision Terminal',
-    navScreener: 'Target Screening Terminal',
-    navDeepDive: 'Company Analysis and Deal Rationale',
-    navBacktest: 'Model Validation and Calibration',
+    brandSubtitle: 'Institutional Investment Banking Decision Support Terminal',
+    navScreener: 'Target Screener',
+    navDeepDive: 'Company Analysis',
+    navBuyers: 'Buyer Matching',
+    navPremium: 'Offer Valuation',
+    navLbo: 'LBO Simulator',
+    navBacktest: 'Model Validation',
     btnRefresh: 'Refresh Market Feed',
     btnRefreshing: 'Updating Feed...',
+    ctxBadgePublic: 'ACTIVE TARGET',
+    ctxBadgeCustom: 'PRIVATE TARGET',
+    btnChainBuyers: 'Send to Buyer Match',
+    btnChainPremium: 'Send to Offer Pricing',
+    btnChainLbo: 'Send to LBO Simulator',
+    btnCustomTarget: 'Custom Private Company',
+    customDrawerTitle: 'Private or Unlisted Target Company Financial Parameter Entry',
+    customDrawerMeta: 'All monetary figures are processed in USD Millions and propagated across all advisory modules',
+    lblCustName: 'Company Name',
+    lblCustRegion: 'Market Region',
+    lblCustSector: 'Sector',
+    lblCustRev: 'Annual Revenue $M',
+    lblCustEbitda: 'Annual EBITDA $M',
+    lblCustMcap: 'Base Equity Value $M',
+    lblCustDebt: 'Total Debt $M',
+    lblCustCash: 'Cash Balance $M',
+    lblCustGrowth: 'Revenue Growth %',
+    lblCustVol: '90-Day Volatility %',
+    lblCustDrawdown: 'Drawdown from High %',
+    btnApplyCustom: 'Evaluate Across All Modules',
     kpiUniverseLabel: 'Screened Corporate Universe',
     kpiLiveSuffix: 'Live Feed',
     kpiHighConvLabel: 'High Conviction Candidates',
@@ -149,7 +288,7 @@ const I18N = {
     filterMaxLevTitle: 'Maximum Net Debt / EBITDA',
     filterOnlyLiveTitle: 'Live Market Feed Only',
     tableMainTitle: 'Target Companies Ranked by Annual Acquisition Probability',
-    tableCountSuffix: 'companies listed · Click any row for detailed causal analysis',
+    tableCountSuffix: 'companies listed · Click any row to select target',
     thRank: 'Rank',
     thTicker: 'Ticker',
     thCompany: 'Company Name',
@@ -190,6 +329,88 @@ const I18N = {
     thPeerMedian: 'Regional Median',
     thPeerDiff: 'Spread vs Median',
     thPeerZ: 'Regional Z-Score',
+    bmKpiDealEv: 'Implied Transaction EV',
+    bmKpiDealSub: 'Including Control Premium',
+    bmKpiEquityTicket: 'Required Sponsor Equity Ticket',
+    bmKpiEquitySub: 'LBO Equity Contribution',
+    bmKpiStratCount: 'Evaluated Strategic Buyers',
+    bmKpiStratSub: 'Corporate Balance Sheet Pool',
+    bmKpiPeCount: 'Private Equity Sponsor Catalog',
+    bmKpiPeSub: 'SEC Form ADV Profiles',
+    bmKpiTopBuyer: 'Highest Matching Acquirer',
+    bmKpiTopScore: 'Lead Match Score',
+    bmTableTitle: 'Top Five Ranked Acquirer Candidates by Total Fit Score',
+    bmFilterAll: 'All Buyers',
+    bmFilterStrat: 'Strategic Buyers',
+    bmFilterPe: 'Private Equity Sponsors',
+    thBmRank: 'Rank',
+    thBmName: 'Acquirer or Sponsor Name',
+    thBmType: 'Buyer Type',
+    thBmRegion: 'Region',
+    thBmFirepower: 'Firepower $M',
+    thBmScore: 'Total Fit',
+    thBmSubscores: 'Sub-Dimension Breakdown',
+    bmChartTitle: 'Four-Dimension Fit Score Breakdown Across Top Five Acquirers',
+    bmChartMeta: 'Text Vector Fit, Financial Capacity, Deal Propensity, and Synergy',
+    bmRationaleTitle: 'Strategic and Financial Matching Rationales for Top Five Candidates',
+    bmRationaleMeta: 'Cosine Vector Similarity and Balance Sheet Debt Headroom Analysis',
+    subNlp: 'Text and Sector',
+    subCap: 'Financial Capacity',
+    subProp: 'Deal Propensity',
+    subSyn: 'Operating Synergy',
+    prKpiBaseMcap: 'Standalone Equity and Enterprise Value',
+    prKpiMinBand: 'Minimum Offer Premium and Value',
+    prKpiMedBand: 'Recommended Median Offer Premium',
+    prKpiMaxBand: 'Maximum Offer Premium and Value',
+    prKpiTxMultiple: 'Implied Transaction EV / EBITDA Band',
+    prKpiBoardProb: 'Board Acceptance at Median Offer',
+    btnOfferToLbo: 'Transfer to LBO',
+    prCurveTitle: 'Target Board Acceptance Probability Curve Across Offer Premiums',
+    prCurveMeta: 'Quantile Distribution and 52-Week High Anchor',
+    prDriversTitle: 'Feature Attribution Breakdown Driving Recommended Control Premium',
+    prDriversMeta: 'Percentage Point Contribution Above Sector Base Premium',
+    prPrecedentTitle: 'Comparable Historical M&A Precedent Transactions in Target Sector',
+    prPrecedentMeta: 'Calibrated Precedent Transaction Matches',
+    thPrDealId: 'Deal ID',
+    thPrYear: 'Year',
+    thPrTarget: 'Target Company',
+    thPrAcquirer: 'Acquirer or Sponsor',
+    thPrSector: 'Sector',
+    thPrDealEv: 'Deal Enterprise Value $M',
+    thPrPreMult: 'Pre-Deal EV/EBITDA',
+    thPrTxMult: 'Transaction EV/EBITDA',
+    thPrPrem: 'Control Premium Paid',
+    lboCtrlEv: 'Entry Transaction EV $M',
+    lboCtrlLev: 'Total Debt / EBITDA',
+    lboCtrlSenShare: 'Senior Debt Share',
+    lboCtrlSenRate: 'Senior Debt Rate',
+    lboCtrlExitMult: 'Year 5 Exit Multiple',
+    lboCtrlCashBuf: 'Min Cash Buffer % Rev',
+    lboKpiIrr: 'Expected and Median IRR',
+    lboKpiMoic: 'Multiple on Invested Capital MoIC',
+    lboKpiHurdle: 'Hurdle Rate Capture Probability',
+    lboKpiHurdleSub: 'Target IRR ≥ 20%',
+    lboKpiDefault: 'Stress Cash Crunch Probability',
+    lboKpiCapStruct: 'Sponsor Equity and Total Debt',
+    lboKpiMinCash: 'Protected Initial Cash Buffer',
+    lboKpiMinCashSub: 'Non-Sweepable Cash Floor',
+    lboHistTitle: '5,000-Iteration Monte Carlo Annual Internal Rate of Return IRR Distribution',
+    lboHistMeta: 'Cholesky-Correlated Stochastic Simulation',
+    lboSensTitle: 'Entry Leverage vs. Exit Multiple Return Sensitivity Matrix',
+    lboSensMeta: 'Cell Values Display Annual IRR Percentage and MoIC Multiple',
+    lboSchedTitle: 'Five-Year Dynamic LBO Cash Flow, Minimum Cash Buffer, and Debt Sweep Schedule',
+    lboSchedMeta: 'Senior and Subordinated Debt Tranche Amortization Projection',
+    thLboYr: 'Projection Year',
+    thLboRev: 'Revenue $M',
+    thLboEbitda: 'EBITDA $M',
+    thLboInt: 'Cash Interest $M',
+    thLboFcf: 'Free Cash Flow $M',
+    thLboBuffer: 'Min Cash Buffer $M',
+    thLboSweep: 'Debt Sweep Paydown $M',
+    thLboSenEnd: 'Ending Senior Debt $M',
+    thLboSubEnd: 'Ending Sub Debt $M',
+    thLboCashEnd: 'Ending Cash $M',
+    thLboNetLev: 'Net Debt / EBITDA',
     btTableTitle: 'Model Architecture and Class Imbalance Strategy Comparison',
     btTableMeta: 'Temporal Out-of-Time Validation Results',
     thBtModel: 'Model Architecture',
@@ -219,6 +440,10 @@ const I18N = {
     sectorWord: 'Sector',
     peerHeaderJoin: 'vs.',
     peerHeaderSuffix: 'Median Benchmark',
+    yearPrefix: 'Year',
+    sensCorner: 'Leverage / Exit',
+    lossProbPrefix: 'Capital Loss',
+    debtSharePrefix: 'Debt Share',
   },
 };
 
@@ -230,6 +455,20 @@ const state = {
   targets: [],
   selectedTicker: null,
   selectedDetail: null,
+  isCustomMode: false,
+  customTargetPayload: null,
+  buyerMatches: null,
+  buyerCategory: 'top_overall',
+  premiumRec: null,
+  lboResult: null,
+  lboParams: {
+    entry_ev_usd_m: 1500,
+    total_debt_ebitda_turns: 4.5,
+    senior_debt_share: 0.70,
+    senior_interest_rate: 0.065,
+    exit_ev_ebitda_multiple: 10.5,
+    min_cash_buffer_pct_rev: 0.04,
+  },
   backtest: null,
   filters: {
     regions: new Set(),
@@ -248,6 +487,13 @@ function t(key) {
   return (I18N[state.lang] && I18N[state.lang][key]) || I18N.tr[key] || key;
 }
 
+function getActiveTargetPayload() {
+  if (state.isCustomMode && state.customTargetPayload) {
+    return { custom_target: state.customTargetPayload };
+  }
+  return { ticker: state.selectedTicker || (state.targets[0] && state.targets[0].ticker) || 'MPARK.IS' };
+}
+
 function applyStaticTranslations() {
   document.documentElement.lang = state.lang;
   document.querySelectorAll('[data-i18n]').forEach((el) => {
@@ -256,6 +502,17 @@ function applyStaticTranslations() {
   });
   const searchInput = document.getElementById('inputSearch');
   if (searchInput) searchInput.placeholder = t('searchPlaceholder');
+}
+
+function updateContextBar(summaryObj) {
+  const badge = document.getElementById('ctxTargetBadge');
+  badge.textContent = state.isCustomMode ? t('ctxBadgeCustom') : t('ctxBadgePublic');
+  document.getElementById('ctxTargetTitle').textContent = `${summaryObj.ticker} — ${summaryObj.company_name}`;
+  document.getElementById('ctxTargetRegion').textContent = summaryObj.region;
+  document.getElementById('ctxTargetSector').textContent = summaryObj.sector;
+  document.getElementById('ctxTargetEv').textContent = `EV: ${summaryObj.enterprise_value_usd_m.toFixed(0)}M$`;
+  const ebitdaEst = summaryObj.enterprise_value_usd_m / Math.max(summaryObj.ev_to_ebitda, 1.0);
+  document.getElementById('ctxTargetEbitda').textContent = `EBITDA: ${ebitdaEst.toFixed(0)}M$`;
 }
 
 function createChipGroup(containerId, items, activeSet, onChange) {
@@ -306,7 +563,7 @@ function renderTargetsTable() {
 
   state.targets.forEach((item) => {
     const tr = document.createElement('tr');
-    if (item.ticker === state.selectedTicker) {
+    if (!state.isCustomMode && item.ticker === state.selectedTicker) {
       tr.classList.add('selected');
     }
 
@@ -340,9 +597,10 @@ function renderTargetsTable() {
     `;
 
     tr.addEventListener('click', async () => {
+      state.isCustomMode = false;
       state.selectedTicker = item.ticker;
-      await loadSingleTargetDetail(item.ticker);
-      switchView('deepdive');
+      renderTargetsTable();
+      await loadAllModulesForCurrentTarget(true);
     });
 
     tbody.appendChild(tr);
@@ -364,6 +622,10 @@ async function loadSingleTargetDetail(ticker) {
   const detail = await fetchTargetDetail(ticker, state.lang);
   state.selectedDetail = detail;
   state.selectedTicker = detail.ticker;
+
+  if (!state.isCustomMode) {
+    updateContextBar(detail);
+  }
 
   document.getElementById('deepDiveTitle').textContent = `${detail.ticker} — ${detail.company_name}`;
   document.getElementById('deepDiveSubtitle').textContent = `${detail.region} · ${detail.sector} ${t('sectorWord')} · ${detail.data_source}`;
@@ -431,7 +693,226 @@ async function loadSingleTargetDetail(ticker) {
     peerBody.appendChild(tr);
   });
 
-  renderShapDivergingChart(document.getElementById('canvasShapBars'), detail.shap_profile);
+  if (state.activeView === 'deepdive') {
+    renderShapDivergingChart(document.getElementById('canvasShapBars'), detail.shap_profile);
+  }
+}
+
+function renderBuyersView() {
+  if (!state.buyerMatches) return;
+  const bm = state.buyerMatches;
+  const list = bm[state.buyerCategory] || bm.top_overall || [];
+
+  document.getElementById('bmDealEv').textContent = `${bm.implied_deal_ev_usd_m.toLocaleString('tr-TR')}M$`;
+  document.getElementById('bmEquityTicket').textContent = `${bm.required_sponsor_equity_usd_m.toLocaleString('tr-TR')}M$`;
+  document.getElementById('bmStratPool').textContent = String(bm.strategic_pool_count);
+  document.getElementById('bmPePool').textContent = String(bm.financial_pool_count);
+
+  if (list.length > 0) {
+    document.getElementById('bmTopBuyerName').textContent = list[0].name;
+    document.getElementById('bmTopBuyerScore').textContent = `${list[0].total_score.toFixed(1)} / 100`;
+    document.getElementById('bmTopBuyerType').textContent = list[0].buyer_type;
+  }
+
+  const tbody = document.getElementById('buyerMatchTableBody');
+  tbody.innerHTML = '';
+  const ratList = document.getElementById('buyerRationalesList');
+  ratList.innerHTML = '';
+
+  list.forEach((b, idx) => {
+    const tr = document.createElement('tr');
+    const bd = b.breakdown;
+    tr.innerHTML = `
+      <td class="num-col"><span class="rank-badge top-tier">#${idx + 1}</span></td>
+      <td style="font-weight: 600;">${b.name}</td>
+      <td>${b.buyer_type}</td>
+      <td>${b.region}</td>
+      <td class="num-col">${b.firepower_usd_m.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}M$</td>
+      <td class="num-col" style="color: var(--brand-gold-bright); font-weight: 700;">${b.total_score.toFixed(1)}</td>
+      <td>
+        <div class="subscore-stack">
+          <div class="subscore-row">
+            <span>${t('subNlp')}</span>
+            <div class="subscore-track"><div class="subscore-fill" style="width:${bd.nlp_fit_score}%"></div></div>
+            <span class="mono">${bd.nlp_fit_score.toFixed(0)}</span>
+          </div>
+          <div class="subscore-row">
+            <span>${t('subCap')}</span>
+            <div class="subscore-track"><div class="subscore-fill" style="width:${bd.financial_capacity_score}%"></div></div>
+            <span class="mono">${bd.financial_capacity_score.toFixed(0)}</span>
+          </div>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+
+    const card = document.createElement('div');
+    card.className = 'driver-item positive';
+    card.innerHTML = `
+      <div class="driver-top">
+        <span class="driver-name">#${idx + 1} · ${b.name} — ${b.buyer_type} · ${b.focus_sector}</span>
+        <span class="driver-shap pos">${b.total_score.toFixed(1)} / 100</span>
+      </div>
+      <div class="driver-desc">${b.rationale}</div>
+    `;
+    ratList.appendChild(card);
+  });
+
+  renderBuyerBreakdownChart(document.getElementById('canvasBuyerBreakdown'), list);
+}
+
+function renderPremiumView() {
+  if (!state.premiumRec) return;
+  const pr = state.premiumRec;
+
+  document.getElementById('prStandaloneMcap').textContent = `${pr.standalone_market_cap_usd_m.toFixed(0)}M$`;
+  document.getElementById('prStandaloneEv').textContent = `EV: ${pr.standalone_ev_usd_m.toFixed(0)}M$`;
+  document.getElementById('prMinPrem').textContent = `+%${pr.min_premium_pct.toFixed(1)}`;
+  document.getElementById('prMinEv').textContent = `EV: ${pr.offer_ev_min_usd_m.toFixed(0)}M$`;
+  document.getElementById('prMedPrem').textContent = `+%${pr.median_premium_pct.toFixed(1)}`;
+  document.getElementById('prMedEv').textContent = `EV: ${pr.offer_ev_median_usd_m.toFixed(0)}M$`;
+  document.getElementById('prMaxPrem').textContent = `+%${pr.max_premium_pct.toFixed(1)}`;
+  document.getElementById('prMaxEv').textContent = `EV: ${pr.offer_ev_max_usd_m.toFixed(0)}M$`;
+  document.getElementById('prImpliedMultiples').textContent = `${pr.implied_tx_ev_ebitda_min.toFixed(1)}x – ${pr.implied_tx_ev_ebitda_max.toFixed(1)}x`;
+  document.getElementById('prBaseMultiple').textContent = `Mevcut: ${pr.standalone_ev_ebitda.toFixed(1)}x`;
+  document.getElementById('prBoardProb').textContent = `%${pr.board_acceptance_at_median_pct.toFixed(1)}`;
+
+  const tbody = document.getElementById('precedentDealsBody');
+  tbody.innerHTML = '';
+  pr.precedent_deals.forEach((d) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="ticker-cell">${d.deal_id}</td>
+      <td class="num-col">${d.deal_year}</td>
+      <td>${d.target_name}</td>
+      <td>${d.acquirer_name}</td>
+      <td>${d.sector}</td>
+      <td class="num-col">${d.deal_ev_usd_m.toFixed(1)}M$</td>
+      <td class="num-col">${d.pre_deal_ev_ebitda.toFixed(2)}x</td>
+      <td class="num-col">${d.transaction_ev_ebitda.toFixed(2)}x</td>
+      <td class="num-col val-pos">+%${d.premium_paid_pct.toFixed(1)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  renderAcceptanceCurveChart(document.getElementById('canvasAcceptanceCurve'), pr.acceptance_curve, pr.median_premium_pct);
+  renderPremiumDriversChart(document.getElementById('canvasPremiumDrivers'), pr.premium_drivers);
+}
+
+function renderLboView() {
+  if (!state.lboResult) return;
+  const res = state.lboResult;
+  const sum = res.summary;
+  const cs = res.capital_structure;
+
+  document.getElementById('lboMedIrr').textContent = `%${sum.median_irr_pct.toFixed(1)}`;
+  document.getElementById('lboP10P90Irr').textContent = `P10 %${sum.p10_irr_pct.toFixed(0)} · P90 %${sum.p90_irr_pct.toFixed(0)}`;
+  document.getElementById('lboMedMoic').textContent = `${sum.median_moic.toFixed(2)}x`;
+  document.getElementById('lboP10P90Moic').textContent = `P10 ${sum.p10_moic.toFixed(2)}x · P90 ${sum.p90_moic.toFixed(2)}x`;
+  document.getElementById('lboProbHurdle').textContent = `%${sum.prob_above_20pct_irr.toFixed(1)}`;
+  document.getElementById('lboStressDefault').textContent = `%${sum.stress_default_probability_pct.toFixed(1)}`;
+  document.getElementById('lboLossProb').textContent = `${t('lossProbPrefix')} %${sum.prob_capital_loss_pct.toFixed(1)}`;
+  document.getElementById('lboEqDebtSplit').textContent = `${cs.sponsor_equity_usd_m.toFixed(0)}M$ / ${cs.total_debt_usd_m.toFixed(0)}M$`;
+  document.getElementById('lboDebtSharePct').textContent = `${t('debtSharePrefix')} %${cs.debt_to_ev_pct.toFixed(1)}`;
+  document.getElementById('lboMinCashVal').textContent = `${cs.initial_min_cash_buffer_usd_m.toFixed(1)}M$`;
+
+  // 5-Year Schedule Table
+  const schedBody = document.getElementById('lboScheduleBody');
+  schedBody.innerHTML = '';
+  res.projection_schedule.forEach((yr) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="num-col">${t('yearPrefix')} ${yr.year}</td>
+      <td class="num-col">${yr.revenue_usd_m.toFixed(1)}</td>
+      <td class="num-col">${yr.ebitda_usd_m.toFixed(1)}</td>
+      <td class="num-col">${yr.interest_expense_usd_m.toFixed(1)}</td>
+      <td class="num-col">${yr.free_cash_flow_usd_m.toFixed(1)}</td>
+      <td class="num-col" style="color: var(--brand-gold-bright);">${yr.min_cash_buffer_usd_m.toFixed(1)}</td>
+      <td class="num-col val-pos">${yr.debt_paydown_usd_m.toFixed(1)}</td>
+      <td class="num-col">${yr.ending_senior_debt_usd_m.toFixed(1)}</td>
+      <td class="num-col">${yr.ending_sub_debt_usd_m.toFixed(1)}</td>
+      <td class="num-col">${yr.ending_cash_usd_m.toFixed(1)}</td>
+      <td class="num-col">${yr.net_leverage_turns.toFixed(2)}x</td>
+    `;
+    schedBody.appendChild(tr);
+  });
+
+  // 5x5 Sensitivity Matrix Table
+  const sensTable = document.getElementById('lboSensitivityTable');
+  const mat = res.sensitivity_matrix;
+  let html = `<thead><tr><th>${t('sensCorner')}</th>`;
+  mat.exit_multiple_axes.forEach((mVal) => {
+    html += `<th>${mVal.toFixed(1)}x</th>`;
+  });
+  html += `</tr></thead><tbody>`;
+
+  mat.leverage_axes.forEach((lVal) => {
+    html += `<tr><td style="font-weight:700; background:#121822;">${lVal.toFixed(2)}x</td>`;
+    mat.exit_multiple_axes.forEach((mVal) => {
+      const cell = mat.cells.find((c) => c.leverage_turns === lVal && c.exit_multiple === mVal);
+      if (cell) {
+        const cls =
+          cell.irr_pct >= 20.0 ? 'sens-cell-strong' : cell.irr_pct >= 12.0 ? 'sens-cell-mid' : 'sens-cell-weak';
+        html += `<td class="${cls}">%${cell.irr_pct.toFixed(1)} · ${cell.moic.toFixed(2)}x</td>`;
+      } else {
+        html += `<td>--</td>`;
+      }
+    });
+    html += `</tr>`;
+  });
+  html += `</tbody>`;
+  sensTable.innerHTML = html;
+
+  renderIrrHistogramChart(document.getElementById('canvasIrrHistogram'), res.irr_histogram, res.summary);
+}
+
+async function runLboWithCurrentSliders() {
+  const basePayload = getActiveTargetPayload();
+  const lboPayload = {
+    ...basePayload,
+    ...state.lboParams,
+  };
+  state.lboResult = await fetchLboSimulation(lboPayload, state.lang);
+  if (state.activeView === 'lbo') {
+    renderLboView();
+  }
+}
+
+async function loadAllModulesForCurrentTarget(syncLboEntryEv = true) {
+  const payload = getActiveTargetPayload();
+
+  if (!state.isCustomMode && state.selectedTicker) {
+    await loadSingleTargetDetail(state.selectedTicker);
+  }
+
+  const [buyers, premium] = await Promise.all([
+    fetchBuyerMatches(payload, state.lang),
+    fetchPremiumRecommendation(payload, state.lang),
+  ]);
+
+  state.buyerMatches = buyers;
+  state.premiumRec = premium;
+
+  if (syncLboEntryEv && premium) {
+    const recEv = Math.round(premium.offer_ev_median_usd_m);
+    state.lboParams.entry_ev_usd_m = recEv;
+    state.lboParams.exit_ev_ebitda_multiple = Math.min(Math.max(premium.implied_tx_ev_ebitda_median, 5.5), 19.0);
+
+    const sliderEv = document.getElementById('sliderLboEv');
+    sliderEv.max = String(Math.max(recEv * 2.5, 5000));
+    sliderEv.value = String(recEv);
+    document.getElementById('valLboEv').textContent = String(recEv);
+
+    const sliderExit = document.getElementById('sliderLboExitMult');
+    sliderExit.value = String(state.lboParams.exit_ev_ebitda_multiple.toFixed(1));
+    document.getElementById('valLboExitMult').textContent = `${state.lboParams.exit_ev_ebitda_multiple.toFixed(1)}x`;
+  }
+
+  await runLboWithCurrentSliders();
+
+  if (state.activeView === 'buyers') renderBuyersView();
+  if (state.activeView === 'premium') renderPremiumView();
+  if (state.activeView === 'lbo') renderLboView();
 }
 
 function renderBacktestView() {
@@ -495,6 +976,12 @@ function switchView(viewName) {
       renderValuationScatterChart(document.getElementById('canvasValuationScatter'), state.targets);
     } else if (viewName === 'deepdive' && state.selectedDetail) {
       renderShapDivergingChart(document.getElementById('canvasShapBars'), state.selectedDetail.shap_profile);
+    } else if (viewName === 'buyers') {
+      renderBuyersView();
+    } else if (viewName === 'premium') {
+      renderPremiumView();
+    } else if (viewName === 'lbo') {
+      renderLboView();
     } else if (viewName === 'backtest') {
       renderBacktestView();
     }
@@ -528,11 +1015,11 @@ async function applyFiltersAndReload() {
     renderValuationScatterChart(document.getElementById('canvasValuationScatter'), state.targets);
   }
 
-  if (state.targets.length > 0) {
+  if (state.targets.length > 0 && !state.isCustomMode) {
     const exists = state.targets.some((item) => item.ticker === state.selectedTicker);
     const targetToLoad = exists ? state.selectedTicker : state.targets[0].ticker;
     state.selectedTicker = targetToLoad;
-    await loadSingleTargetDetail(targetToLoad);
+    await loadAllModulesForCurrentTarget(true);
   }
 }
 
@@ -563,13 +1050,13 @@ async function reloadForLanguage(newLang) {
   createChipGroup('chipContainerSizes', meta.size_buckets, state.filters.sizes, applyFiltersAndReload);
 
   await applyFiltersAndReload();
-  if (state.activeView === 'backtest') {
-    renderBacktestView();
+  if (state.isCustomMode) {
+    await loadAllModulesForCurrentTarget(false);
   }
+  switchView(state.activeView);
 }
 
 async function initApp() {
-  // Language toggle buttons
   document.querySelectorAll('.lang-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const targetLang = btn.dataset.lang;
@@ -579,19 +1066,134 @@ async function initApp() {
     });
   });
 
-  // Navigation tabs
   document.querySelectorAll('.nav-tab').forEach((btn) => {
     btn.addEventListener('click', () => switchView(btn.dataset.view));
   });
 
-  // Search input
+  // One-click chain navigation buttons in Active Target Context Bar
+  document.getElementById('btnChainBuyers').addEventListener('click', () => switchView('buyers'));
+  document.getElementById('btnChainPremium').addEventListener('click', () => switchView('premium'));
+  document.getElementById('btnChainLbo').addEventListener('click', () => switchView('lbo'));
+
+  document.getElementById('btnSendOfferToLbo').addEventListener('click', async () => {
+    if (state.premiumRec) {
+      const medEv = Math.round(state.premiumRec.offer_ev_median_usd_m);
+      state.lboParams.entry_ev_usd_m = medEv;
+      document.getElementById('sliderLboEv').value = String(medEv);
+      document.getElementById('valLboEv').textContent = String(medEv);
+      await runLboWithCurrentSliders();
+    }
+    switchView('lbo');
+  });
+
+  // Custom Private Target Drawer Toggle & Evaluation
+  const customDrawer = document.getElementById('customTargetDrawer');
+  document.getElementById('btnToggleCustomTarget').addEventListener('click', () => {
+    customDrawer.classList.toggle('open');
+  });
+
+  document.getElementById('btnApplyCustomTarget').addEventListener('click', async () => {
+    const rev = parseFloat(document.getElementById('custRev').value) || 500;
+    const ebitda = parseFloat(document.getElementById('custEbitda').value) || 100;
+    const mcap = parseFloat(document.getElementById('custMcap').value) || 750;
+    const debt = parseFloat(document.getElementById('custDebt').value) || 180;
+    const cash = parseFloat(document.getElementById('custCash').value) || 60;
+    const growthPct = parseFloat(document.getElementById('custGrowth').value) || 15;
+    const volPct = parseFloat(document.getElementById('custVol').value) || 28;
+    const ddPct = parseFloat(document.getElementById('custDrawdown').value) || -18;
+    const compName = document.getElementById('custName').value.trim() || 'Özel Hedef Şirket';
+    const regVal = document.getElementById('custRegion').value;
+    const secVal = document.getElementById('custSector').value;
+
+    state.isCustomMode = true;
+    state.customTargetPayload = {
+      ticker: 'PRIVATE',
+      company_name: compName,
+      region: regVal,
+      sector: secVal,
+      revenue: rev,
+      ebitda: ebitda,
+      market_cap: mcap,
+      total_debt: debt,
+      cash_and_equivalents: cash,
+      rev_growth_1y: growthPct / 100.0,
+      stock_volatility_90d: volPct / 100.0,
+      dist_from_52w_high: ddPct / 100.0,
+    };
+
+    const ev = Math.max(mcap + debt - cash, ebitda * 3);
+    updateContextBar({
+      ticker: 'PRIVATE',
+      company_name: compName,
+      region: document.getElementById('custRegion').selectedOptions[0].text,
+      sector: document.getElementById('custSector').selectedOptions[0].text,
+      enterprise_value_usd_m: ev,
+      ev_to_ebitda: ev / Math.max(ebitda, 1),
+    });
+
+    await loadAllModulesForCurrentTarget(true);
+    customDrawer.classList.remove('open');
+    if (state.activeView === 'screener' || state.activeView === 'deepdive') {
+      switchView('buyers');
+    }
+  });
+
+  // Buyer category filter chips
+  document.querySelectorAll('[data-buyer-cat]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.buyerCategory = btn.getAttribute('data-buyer-cat');
+      document.querySelectorAll('[data-buyer-cat]').forEach((b) => {
+        b.classList.toggle('active', b === btn);
+      });
+      renderBuyersView();
+    });
+  });
+
+  // LBO Interactive Sliders
+  const bindLboSlider = (sliderId, valId, paramKey, formatter, parser = parseFloat) => {
+    const el = document.getElementById(sliderId);
+    el.addEventListener('input', () => {
+      const v = parser(el.value);
+      state.lboParams[paramKey] = v;
+      document.getElementById(valId).textContent = formatter(v);
+    });
+    el.addEventListener('change', () => {
+      runLboWithCurrentSliders();
+    });
+  };
+
+  bindLboSlider('sliderLboEv', 'valLboEv', 'entry_ev_usd_m', (v) => `${v.toFixed(0)}`);
+  bindLboSlider('sliderLboLev', 'valLboLev', 'total_debt_ebitda_turns', (v) => `${v.toFixed(2)}x`);
+  bindLboSlider(
+    'sliderLboSenShare',
+    'valLboSenShare',
+    'senior_debt_share',
+    (v) => `%${(v * 100).toFixed(0)}`,
+    (raw) => parseFloat(raw) / 100.0
+  );
+  bindLboSlider(
+    'sliderLboSenRate',
+    'valLboSenRate',
+    'senior_interest_rate',
+    (v) => `%${(v * 100).toFixed(2)}`,
+    (raw) => parseFloat(raw) / 100.0
+  );
+  bindLboSlider('sliderLboExitMult', 'valLboExitMult', 'exit_ev_ebitda_multiple', (v) => `${v.toFixed(1)}x`);
+  bindLboSlider(
+    'sliderLboCashBuf',
+    'valLboCashBuf',
+    'min_cash_buffer_pct_rev',
+    (v) => `%${(v * 100).toFixed(1)}`,
+    (raw) => parseFloat(raw) / 100.0
+  );
+
+  // Screener search and sliders
   const inputSearch = document.getElementById('inputSearch');
   inputSearch.addEventListener('input', () => {
     state.filters.q = inputSearch.value.trim();
     applyFiltersAndReload();
   });
 
-  // Sliders
   const sliderMinProb = document.getElementById('sliderMinProb');
   sliderMinProb.addEventListener('input', () => {
     state.filters.minProb = parseFloat(sliderMinProb.value);
@@ -612,7 +1214,6 @@ async function initApp() {
     applyFiltersAndReload();
   });
 
-  // Reset button
   document.getElementById('btnResetFilters').addEventListener('click', () => {
     if (!state.metadata) return;
     state.filters.regions = new Set(state.metadata.regions);
@@ -634,7 +1235,6 @@ async function initApp() {
     applyFiltersAndReload();
   });
 
-  // Table sorting
   document.querySelectorAll('#targetsTable thead th.sortable').forEach((th) => {
     th.addEventListener('click', () => {
       const col = th.dataset.sort;
@@ -648,12 +1248,12 @@ async function initApp() {
     });
   });
 
-  // Deep-dive target select
   document.getElementById('selectTargetTicker').addEventListener('change', async (e) => {
-    await loadSingleTargetDetail(e.target.value);
+    state.isCustomMode = false;
+    state.selectedTicker = e.target.value;
+    await loadAllModulesForCurrentTarget(true);
   });
 
-  // Live refresh button
   const btnRefresh = document.getElementById('btnRefreshPipeline');
   btnRefresh.addEventListener('click', async () => {
     const label = document.getElementById('btnRefreshText');

@@ -36,6 +36,10 @@ from src.api.schemas import (
     sanitize_display_text,
     serialize_target_row,
 )
+from src.advisory.buyer_matcher import BuyerMatchingEngine
+from src.advisory.lbo_simulator import LBORiskSimulator
+from src.advisory.premium_engine import AcquisitionPremiumEngine
+from src.advisory.target_resolver import resolve_target_profile
 from src.config import ALL_RAW_FEATURES, ARTIFACTS_DIR, PROJECT_ROOT
 from src.models.explainer import MAExplainer
 from src.pipeline import run_ma_pipeline
@@ -55,6 +59,9 @@ class OrigonServiceState:
         self.sec_df: pd.DataFrame = pd.DataFrame()
         self.bundle: Dict[str, Any] = {}
         self.last_updated_iso: str = ""
+        self.buyer_matcher = BuyerMatchingEngine()
+        self.premium_engine = AcquisitionPremiumEngine(random_state=42).fit()
+        self.lbo_simulator = LBORiskSimulator(n_iterations=5000, random_state=42)
         self.load_or_initialize(force_retrain=False, use_live=False)
 
     def load_or_initialize(self, force_retrain: bool = False, use_live: bool = True) -> None:
@@ -378,6 +385,68 @@ def create_app(artifacts_dir: Path = ARTIFACTS_DIR) -> Starlette:
             }
         )
 
+    async def _parse_request_payload(request: Request) -> Dict[str, Any]:
+        payload: Dict[str, Any] = dict(request.query_params)
+        if request.method in ("POST", "PUT"):
+            try:
+                body_json = await request.json()
+                if isinstance(body_json, dict):
+                    payload.update(body_json)
+            except Exception:
+                pass
+        return payload
+
+    def _resolve_from_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+        custom_obj = payload.get("custom_target")
+        if isinstance(custom_obj, dict) and custom_obj:
+            return resolve_target_profile(custom_payload=custom_obj)
+        ticker_val = str(payload.get("ticker", "")).strip()
+        if ticker_val and ticker_val.upper() != "CUSTOM":
+            return resolve_target_profile(ticker=ticker_val, ranked_df=state.ranked_df)
+        if payload.get("company_name") or payload.get("revenue"):
+            return resolve_target_profile(custom_payload=payload)
+        first_ticker = str(state.ranked_df.iloc[0]["ticker"])
+        return resolve_target_profile(ticker=first_ticker, ranked_df=state.ranked_df)
+
+    async def advisory_buyers(request: Request) -> JSONResponse:
+        payload = await _parse_request_payload(request)
+        lang = str(payload.get("lang", request.query_params.get("lang", "tr")))
+        top_k = int(payload.get("top_k", 5))
+        target = _resolve_from_payload(payload)
+        result = state.buyer_matcher.match_buyers(target, top_k=top_k, lang=lang)
+        return JSONResponse(result)
+
+    async def advisory_premium(request: Request) -> JSONResponse:
+        payload = await _parse_request_payload(request)
+        lang = str(payload.get("lang", request.query_params.get("lang", "tr")))
+        rate_env = float(payload.get("interest_rate_env", 0.048))
+        target = _resolve_from_payload(payload)
+        result = state.premium_engine.recommend_offer(target, interest_rate_env=rate_env, lang=lang)
+        return JSONResponse(result)
+
+    async def advisory_lbo(request: Request) -> JSONResponse:
+        payload = await _parse_request_payload(request)
+        lang = str(payload.get("lang", request.query_params.get("lang", "tr")))
+        target = _resolve_from_payload(payload)
+
+        entry_ev = float(payload.get("entry_ev_usd_m", 0.0))
+        if entry_ev <= 0:
+            prem_rec = state.premium_engine.recommend_offer(target, lang=lang)
+            entry_ev = float(prem_rec["offer_ev_median_usd_m"])
+
+        result = state.lbo_simulator.simulate(
+            target=target,
+            entry_ev_usd_m=entry_ev,
+            total_debt_ebitda_turns=float(payload.get("total_debt_ebitda_turns", 4.5)),
+            senior_debt_share=float(payload.get("senior_debt_share", 0.70)),
+            senior_interest_rate=float(payload.get("senior_interest_rate", 0.065)),
+            subordinated_interest_rate=float(payload.get("subordinated_interest_rate", 0.108)),
+            exit_ev_ebitda_multiple=float(payload.get("exit_ev_ebitda_multiple", 0.0)),
+            min_cash_buffer_pct_rev=float(payload.get("min_cash_buffer_pct_rev", 0.04)),
+            lang=lang,
+        )
+        return JSONResponse(result)
+
     async def serve_index(request: Request):
         index_file = WEB_DIR / "index.html"
         if index_file.exists():
@@ -392,6 +461,9 @@ def create_app(artifacts_dir: Path = ARTIFACTS_DIR) -> Starlette:
         Route("/api/v1/targets/{ticker}", get_target_detail, methods=["GET"]),
         Route("/api/v1/backtest", get_backtest, methods=["GET"]),
         Route("/api/v1/pipeline/refresh", refresh_pipeline, methods=["POST"]),
+        Route("/api/v1/advisory/buyers", advisory_buyers, methods=["GET", "POST"]),
+        Route("/api/v1/advisory/premium", advisory_premium, methods=["GET", "POST"]),
+        Route("/api/v1/advisory/lbo", advisory_lbo, methods=["GET", "POST"]),
         Route("/", serve_index, methods=["GET"]),
     ]
 
