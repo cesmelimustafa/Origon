@@ -24,6 +24,14 @@ MODEL_DISPLAY_NAMES = {
     "lightgbm": "LightGBM Classifier",
 }
 
+DISPLAY_MULTIPLE_COLUMNS = [
+    "ev_to_ebitda",
+    "sector_ev_ebitda_discount",
+    "net_debt_to_ebitda",
+    "price_to_book",
+    "price_to_sales",
+]
+
 
 def run_ma_pipeline(
     n_companies: int = 420,
@@ -55,6 +63,12 @@ def run_ma_pipeline(
     )
 
     feat_df = compute_financial_features(panel_df)
+
+    # Preserve unwinsorized valuation multiples for display and advisory modules. Winsorization
+    # and imputation are model hygiene steps; showing the clipped training percentile to users
+    # would make every extreme company appear at the same artificial ceiling.
+    for disp_col in DISPLAY_MULTIPLE_COLUMNS:
+        feat_df[f"disp_{disp_col}"] = feat_df[disp_col]
 
     splitter = TimeBasedSplitter(DEFAULT_SPLIT_CONFIG)
     train_raw, val_raw, test_raw = splitter.split(feat_df)
@@ -157,8 +171,9 @@ def run_ma_pipeline(
 
     # Sector medians on the test cross-section (grouped by region & sector) for peer benchmarking cards
     med_group_cols = ["region", "sector"] if "region" in ranked_targets_df.columns else ["sector"]
+    disp_cols = [f"disp_{c}" for c in DISPLAY_MULTIPLE_COLUMNS if f"disp_{c}" in ranked_targets_df.columns]
     sector_medians_df = (
-        ranked_targets_df.groupby(med_group_cols)[ALL_RAW_FEATURES].median().reset_index()
+        ranked_targets_df.groupby(med_group_cols)[ALL_RAW_FEATURES + disp_cols].median().reset_index()
     )
 
     decile_lift_df = compute_decile_lift_table(y_test, champion_probs)

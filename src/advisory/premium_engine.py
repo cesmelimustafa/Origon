@@ -1,9 +1,10 @@
 """Module 3: Acquisition Premium and Offer Price Recommendation Engine using Quantile Gradient Boosting."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.model_selection import train_test_split
 
 from src.api.schemas import get_sector_map, is_en_lang, sanitize_display_text
 from src.data.benchmark_generator import REGION_PARAMETERS, SECTOR_PROFILES
@@ -99,6 +100,38 @@ PREMIUM_FEATURE_COLS: List[str] = [
 ]
 
 
+def reference_point_premium_pct(dist_from_52w_high: float) -> float:
+    """
+    Exact offer premium percentage required to restore the target's 52-week high price
+    (Baker, Pan & Wurgler, 2012, Journal of Financial Economics).
+
+    Given drawdown d = (P_0 - P_52w) / P_52w <= 0, the required run-up to reach P_52w is:
+        pi_52w* = (P_52w - P_0) / P_0 * 100 = (-d / (1 + d)) * 100
+    """
+    d = float(dist_from_52w_high)
+    if not np.isfinite(d) or d >= 0.0:
+        return 0.0
+    d_clamped = max(d, -0.85)
+    return float((-d_clamped / (1.0 + d_clamped)) * 100.0)
+
+
+def board_acceptance_probability(
+    premium_pct: float,
+    inflection: float,
+    spread: float,
+    reference_premium: float = 0.0,
+) -> float:
+    """
+    Monotone logistic board acceptance probability with the Baker, Pan & Wurgler (2012)
+    discontinuous reference-point jump once the offer crosses the 52-week high price.
+    """
+    s = max(float(spread), 1.0)
+    logit = (float(premium_pct) - float(inflection)) / s
+    if reference_premium > 0.0 and float(premium_pct) >= float(reference_premium):
+        logit += 0.58
+    return float(np.clip(100.0 / (1.0 + np.exp(-logit)), 1.0, 99.2))
+
+
 def generate_precedent_transactions_dataset(
     n_transactions: int = 640,
     random_state: int = 42,
@@ -137,12 +170,14 @@ def generate_precedent_transactions_dataset(
         net_debt_to_ebitda = float(np.clip(rng.normal(1.6, 1.1), -1.5, 5.5))
         deal_ev_usd_m = float(np.round(np.exp(rng.normal(6.8, 1.0)), 1))
 
-        # Structural acquisition premium percentage formula grounded in M&A literature (Baker, Pan & Wurgler 52w-high anchor)
+        # Structural acquisition premium percentage formula grounded in M&A literature
+        # (Baker, Pan & Wurgler 2012 exact 52-week high reference-point elasticity ~0.38)
         base_prem = SECTOR_BASE_PREMIUMS[sec]
+        ref_52w_prem = min(reference_point_premium_pct(dist_52w), 90.0)
         structural_prem = (
             base_prem
             + 24.0 * sector_discount
-            + 32.0 * abs(dist_52w) * 0.55
+            + 0.38 * ref_52w_prem
             + 26.0 * rev_growth_1y
             + 42.0 * fcf_to_assets
             + 12.0 * (vol_90d - 0.25)
@@ -203,6 +238,7 @@ class AcquisitionPremiumEngine:
         )
         self.precedent_df_: pd.DataFrame = pd.DataFrame()
         self.feature_medians_: Dict[str, float] = {}
+        self.conformal_margin_: float = 0.0
         self._is_fitted = False
 
     def fit(self, precedent_df: Optional[pd.DataFrame] = None) -> "AcquisitionPremiumEngine":
@@ -212,12 +248,58 @@ class AcquisitionPremiumEngine:
         y = df["acquisition_premium_pct"].values
 
         self.feature_medians_ = X.median().to_dict()
-        self.q15_model.fit(X, y)
-        self.q50_model.fit(X, y)
-        self.q85_model.fit(X, y)
-        self.mean_model.fit(X, y)
+        # Split Conformalized Quantile Regression (Romano, Patterson & Candes, 2019)
+        # preserves finite-sample marginal coverage for the nominal 70% [q15, q85] band.
+        X_tr, X_cal, y_tr, y_cal = train_test_split(
+            X, y, test_size=0.20, random_state=self.random_state
+        )
+        self.q15_model.fit(X_tr, y_tr)
+        self.q50_model.fit(X_tr, y_tr)
+        self.q85_model.fit(X_tr, y_tr)
+        self.mean_model.fit(X_tr, y_tr)
+
+        cal_q = np.sort(
+            np.column_stack(
+                [
+                    self.q15_model.predict(X_cal),
+                    self.q50_model.predict(X_cal),
+                    self.q85_model.predict(X_cal),
+                ]
+            ),
+            axis=1,
+        )
+        scores = np.maximum(cal_q[:, 0] - y_cal, y_cal - cal_q[:, 2])
+        n_cal = len(scores)
+        q_level = min(np.ceil(0.70 * (n_cal + 1)) / max(n_cal, 1), 1.0)
+        self.conformal_margin_ = float(np.quantile(scores, q_level))
         self._is_fitted = True
         return self
+
+    def predict_premium_band(self, X_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Predict non-crossing (Chernozhukov, Fernandez-Val & Galichon, 2010) and split-conformal
+        calibrated (Romano et al., 2019) [low, median, high] acquisition premium percentages.
+        """
+        if not self._is_fitted:
+            self.fit()
+        X = X_df[PREMIUM_FEATURE_COLS]
+        q_sorted = np.sort(
+            np.column_stack(
+                [
+                    self.q15_model.predict(X),
+                    self.q50_model.predict(X),
+                    self.q85_model.predict(X),
+                ]
+            ),
+            axis=1,
+        )
+        mean_pred = self.mean_model.predict(X)
+        med = 0.55 * q_sorted[:, 1] + 0.45 * mean_pred
+        lo = q_sorted[:, 0] - self.conformal_margin_
+        hi = q_sorted[:, 2] + self.conformal_margin_
+        rearranged = np.sort(np.column_stack([lo, med, hi]), axis=1)
+        rearranged = np.clip(rearranged, 4.0, 90.0)
+        return rearranged[:, 0], rearranged[:, 1], rearranged[:, 2]
 
     def recommend_offer(
         self,
@@ -247,14 +329,15 @@ class AcquisitionPremiumEngine:
             ]
         )
 
-        raw_q15 = float(self.q15_model.predict(x_row)[0])
-        raw_q50 = float(self.q50_model.predict(x_row)[0])
-        raw_q85 = float(self.q85_model.predict(x_row)[0])
-        raw_mean = float(self.mean_model.predict(x_row)[0])
-
-        med_prem = float(np.clip(0.55 * raw_q50 + 0.45 * raw_mean, 12.0, 72.0))
-        min_prem = float(np.clip(min(raw_q15, med_prem - 6.5), 6.0, med_prem - 4.0))
-        max_prem = float(np.clip(max(raw_q85, med_prem + 7.5), med_prem + 4.5, 85.0))
+        lo_arr, med_arr, hi_arr = self.predict_premium_band(x_row)
+        min_prem = float(lo_arr[0])
+        med_prem = float(med_arr[0])
+        max_prem = float(hi_arr[0])
+        # Guarantee strict visual separation for the 3-point offer price band when margin collapses
+        if min_prem >= med_prem - 1.0:
+            min_prem = max(4.0, med_prem - 4.0)
+        if max_prem <= med_prem + 1.0:
+            max_prem = min(90.0, med_prem + 4.5)
 
         # Equity-to-Enterprise Value Offer Bridge (Premium applies strictly to Equity / Market Cap!)
         base_mcap = max(float(target["market_cap"]), 10.0)
@@ -272,14 +355,19 @@ class AcquisitionPremiumEngine:
         ev_max = round(max(eq_max + net_debt, ebitda * 2.5), 1)
 
         # Board Acceptance Probability Curve across offer premiums [0% .. 75%]
+        # Incorporates exact Baker, Pan & Wurgler (2012) 52-week high reference-point kink.
         spread = max((max_prem - min_prem) * 0.34, 4.2)
-        anchor_52w_prem = abs(float(target.get("dist_from_52w_high", -0.18))) * 100.0
-        inflection_prem = 0.72 * med_prem + 0.28 * max(anchor_52w_prem, 15.0)
+        anchor_52w_prem = reference_point_premium_pct(float(target.get("dist_from_52w_high", -0.18)))
+        inflection_prem = 0.72 * med_prem + 0.28 * max(min(anchor_52w_prem, 75.0), 15.0)
 
         acceptance_curve = []
         for p_grid in range(0, 76, 5):
-            logit = (float(p_grid) - inflection_prem) / spread
-            prob_accept = float(np.clip(100.0 / (1.0 + np.exp(-logit)), 1.0, 99.2))
+            prob_accept = board_acceptance_probability(
+                premium_pct=float(p_grid),
+                inflection=inflection_prem,
+                spread=spread,
+                reference_premium=anchor_52w_prem,
+            )
             offer_eq = round(base_mcap * (1.0 + p_grid / 100.0), 1)
             offer_ev = round(max(offer_eq + net_debt, ebitda * 2.0), 1)
             acceptance_curve.append(
@@ -300,8 +388,11 @@ class AcquisitionPremiumEngine:
 
         precedent_list = []
         for _, d_row in closest_deals.iterrows():
+            # Exact accounting identity: EV_deal / EBITDA = EV_pre / EBITDA + (prem/100) * (Equity_pre / EBITDA)
+            pre_ev_mult = float(d_row["ev_to_ebitda"])
+            eq_to_ebitda = max(pre_ev_mult - float(d_row["net_debt_to_ebitda"]), 1.0)
             deal_ev_mult = round(
-                float(d_row["ev_to_ebitda"]) * (1.0 + float(d_row["acquisition_premium_pct"]) / 135.0), 2
+                pre_ev_mult + (float(d_row["acquisition_premium_pct"]) / 100.0) * eq_to_ebitda, 2
             )
             precedent_list.append(
                 {

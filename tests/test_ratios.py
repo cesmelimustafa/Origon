@@ -76,10 +76,18 @@ def test_compute_financial_features_produces_all_22_ratios_and_handles_zero_deno
 
     feat_df = compute_financial_features(raw_df)
 
-    # All 22 required financial features must be present and finite
+    # All 22 required financial features must be present; EBITDA-based multiples are NaN (NM) when EBITDA <= 0
+    ebitda_dep_cols = {"ev_to_ebitda", "sector_ev_ebitda_discount", "net_debt_to_ebitda"}
     for col in ALL_RAW_FEATURES:
         assert col in feat_df.columns, f"Missing engineered feature: {col}"
-        assert np.isfinite(feat_df[col]).all(), f"Non-finite values in feature: {col}"
+        assert np.isfinite(feat_df.loc[0, col]), f"Non-finite value on positive-EBITDA row for feature: {col}"
+        if col in ebitda_dep_cols:
+            assert np.isnan(feat_df.loc[1, col]), f"Zero-EBITDA row should be NaN (NM) for feature: {col}"
+        else:
+            assert np.isfinite(feat_df.loc[1, col]), f"Non-finite values in feature: {col}"
+
+    assert int(feat_df.loc[0, "ebitda_meaningful"]) == 1
+    assert int(feat_df.loc[1, "ebitda_meaningful"]) == 0
 
     # Verify exact math for CHEAP row:
     # EV = 900 + 200 - 100 = 1000; EV/EBITDA = 1000 / 160 = 6.25
@@ -92,8 +100,8 @@ def test_compute_financial_features_produces_all_22_ratios_and_handles_zero_deno
     assert np.isclose(feat_df.loc[0, "net_debt_to_ebitda"], 0.625)
     # 4Q margin momentum: [0.17, 0.19, 0.21, 0.23] has positive slope +0.02 per quarter
     assert np.isclose(feat_df.loc[0, "margin_momentum_4q"], 0.02, atol=1e-4)
-    # CHEAP is cheaper than EXP so its sector EV/EBITDA discount must be positive
-    assert feat_df.loc[0, "sector_ev_ebitda_discount"] > 0.0
+    # CHEAP is cheaper on P/B than zero-equity EXP so its sector P/B discount must be positive
+    assert feat_df.loc[0, "sector_pb_discount"] > 0.0
 
 
 def test_sector_time_normalizer_adds_robust_z_scores():

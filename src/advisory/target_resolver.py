@@ -36,6 +36,14 @@ REVERSE_SECTOR_MAP: Dict[str, str] = {
 }
 
 
+def _finite_or_none(value: Any) -> Optional[float]:
+    try:
+        fval = float(value)
+    except (TypeError, ValueError):
+        return None
+    return fval if np.isfinite(fval) else None
+
+
 def resolve_target_profile(
     ticker: Optional[str] = None,
     ranked_df: Optional[pd.DataFrame] = None,
@@ -54,7 +62,20 @@ def resolve_target_profile(
             reg_code = str(row.get("region", "US (NYSE/NASDAQ)"))
             vol_12m = float(row.get("stock_volatility_12m", 0.28))
             ret_12m = float(row.get("stock_return_12m", -0.05))
-            dist_52w = float(np.clip(min(ret_12m - 0.12, -0.04), -0.65, -0.02))
+            obs_dist = _finite_or_none(row.get("dist_from_52w_high"))
+            if obs_dist is not None:
+                # Observed drawdown from the 52-week high, price / high - 1.
+                dist_52w = float(np.clip(obs_dist, -0.80, 0.0))
+            else:
+                dist_52w = float(np.clip(min(ret_12m - 0.12, -0.04), -0.65, -0.02))
+
+            def _mult(col: str, default: float) -> float:
+                """Unwinsorized display multiple, falling back to the imputed model value when not meaningful."""
+                disp = _finite_or_none(row.get(f"disp_{col}"))
+                if disp is not None:
+                    return disp
+                model_val = _finite_or_none(row.get(col))
+                return model_val if model_val is not None else default
 
             return {
                 "is_custom": False,
@@ -72,11 +93,11 @@ def resolve_target_profile(
                 "cash_and_equivalents": float(row.get("cash_and_equivalents", 90.0)),
                 "market_cap": float(row.get("market_cap", 900.0)),
                 "enterprise_value": float(row.get("enterprise_value", 1010.0)),
-                "ev_to_ebitda": float(row.get("ev_to_ebitda", 11.2)),
-                "price_to_book": float(row.get("price_to_book", 2.4)),
-                "price_to_sales": float(row.get("price_to_sales", 1.8)),
-                "sector_ev_ebitda_discount": float(row.get("sector_ev_ebitda_discount", 0.15)),
-                "net_debt_to_ebitda": float(row.get("net_debt_to_ebitda", 1.22)),
+                "ev_to_ebitda": _mult("ev_to_ebitda", 11.2),
+                "price_to_book": _mult("price_to_book", 2.4),
+                "price_to_sales": _mult("price_to_sales", 1.8),
+                "sector_ev_ebitda_discount": _mult("sector_ev_ebitda_discount", 0.15),
+                "net_debt_to_ebitda": _mult("net_debt_to_ebitda", 1.22),
                 "fcf_to_assets": float(row.get("fcf_to_assets", 0.08)),
                 "cash_to_assets": float(row.get("cash_to_assets", 0.09)),
                 "rev_growth_1y": float(row.get("rev_growth_1y", 0.10)),

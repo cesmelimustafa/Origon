@@ -154,6 +154,7 @@ def create_app(artifacts_dir: Path = ARTIFACTS_DIR) -> Starlette:
         metrics = state.bundle["champion_metrics"]
         live_count = int((df["data_source"] == "Live_Yahoo_Finance").sum())
         high_conviction = int((df["predicted_ma_pct"] >= 35.0).sum())
+        ev_col = "disp_ev_to_ebitda" if "disp_ev_to_ebitda" in df.columns else "ev_to_ebitda"
 
         sector_summary = []
         for sec_name, grp in df.groupby("clean_sector"):
@@ -163,7 +164,7 @@ def create_app(artifacts_dir: Path = ARTIFACTS_DIR) -> Starlette:
                     "company_count": int(len(grp)),
                     "avg_probability_pct": round(float(grp["predicted_ma_pct"].mean()), 2),
                     "max_probability_pct": round(float(grp["predicted_ma_pct"].max()), 2),
-                    "median_ev_ebitda": round(float(grp["ev_to_ebitda"].median()), 2),
+                    "median_ev_ebitda": round(float(grp[ev_col].median()), 2),
                     "high_conviction_count": int((grp["predicted_ma_pct"] >= 35.0).sum()),
                 }
             )
@@ -176,7 +177,7 @@ def create_app(artifacts_dir: Path = ARTIFACTS_DIR) -> Starlette:
                     "region": str(reg_name),
                     "company_count": int(len(grp)),
                     "avg_probability_pct": round(float(grp["predicted_ma_pct"].mean()), 2),
-                    "median_ev_ebitda": round(float(grp["ev_to_ebitda"].median()), 2),
+                    "median_ev_ebitda": round(float(grp[ev_col].median()), 2),
                 }
             )
 
@@ -252,7 +253,9 @@ def create_app(artifacts_dir: Path = ARTIFACTS_DIR) -> Starlette:
             "fcf_to_assets_pct": "fcf_to_assets",
         }
         target_col = sort_col_map.get(sort_by, "ma_rank")
-        df = df.sort_values(by=target_col, ascending=ascending)
+        if f"disp_{target_col}" in df.columns:
+            target_col = f"disp_{target_col}"
+        df = df.sort_values(by=target_col, ascending=ascending, na_position="last")
 
         total_filtered = int(len(df))
         limit = min(max(int(qp.get("limit", 200)), 1), 500)
@@ -412,8 +415,16 @@ def create_app(artifacts_dir: Path = ARTIFACTS_DIR) -> Starlette:
         payload = await _parse_request_payload(request)
         lang = str(payload.get("lang", request.query_params.get("lang", "tr")))
         top_k = int(payload.get("top_k", 5))
+        buyer_regions = payload.get("buyer_regions")
+        if isinstance(buyer_regions, str):
+            buyer_regions = [r.strip() for r in buyer_regions.split(",") if r.strip()]
         target = _resolve_from_payload(payload)
-        result = state.buyer_matcher.match_buyers(target, top_k=top_k, lang=lang)
+        result = state.buyer_matcher.match_buyers(
+            target,
+            top_k=top_k,
+            lang=lang,
+            buyer_regions=buyer_regions if isinstance(buyer_regions, list) else None,
+        )
         return JSONResponse(result)
 
     async def advisory_premium(request: Request) -> JSONResponse:

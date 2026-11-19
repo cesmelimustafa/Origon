@@ -131,9 +131,13 @@ const I18N = {
     bmKpiTopBuyer: 'En Yüksek Uyumlu Alıcı',
     bmKpiTopScore: 'Lider Eşleşme Skoru',
     bmTableTitle: 'En Yüksek Uyum Skoruna Sahip İlk Beş Alıcı Adayı',
+    bmRegionFilterTitle: 'Alıcı Pazarı ve Sınır Ötesi Sermaye Havuzu',
+    bmRegionAll: 'Tüm Pazarlar · Sınır Ötesi Dahil',
     bmFilterAll: 'Tüm Alıcılar',
     bmFilterStrat: 'Stratejik Alıcılar',
     bmFilterPe: 'Özel Sermaye Fonları',
+    bmFilterCong: 'Holding ve Konglomeralar',
+    bmFilterSwf: 'Devlet Varlık Fonları',
     thBmRank: 'Sıra',
     thBmName: 'Alıcı Kurum veya Fon Adı',
     thBmType: 'Alıcı Tipi',
@@ -235,6 +239,7 @@ const I18N = {
     sensCorner: 'Kaldıraç / Çıkış',
     lossProbPrefix: 'Anapara Kaybı',
     debtSharePrefix: 'Borç Oranı',
+    nmTooltip: 'FAVÖK sıfır veya negatif olduğu için çarpan anlamlı değildir',
   },
   en: {
     brandTag: 'M&A ANALYTICS',
@@ -340,9 +345,13 @@ const I18N = {
     bmKpiTopBuyer: 'Highest Matching Acquirer',
     bmKpiTopScore: 'Lead Match Score',
     bmTableTitle: 'Top Five Ranked Acquirer Candidates by Total Fit Score',
+    bmRegionFilterTitle: 'Acquirer Market and Cross-Border Capital Pool',
+    bmRegionAll: 'All Markets · Including Cross-Border',
     bmFilterAll: 'All Buyers',
     bmFilterStrat: 'Strategic Buyers',
     bmFilterPe: 'Private Equity Sponsors',
+    bmFilterCong: 'Holdings and Conglomerates',
+    bmFilterSwf: 'Sovereign Wealth Funds',
     thBmRank: 'Rank',
     thBmName: 'Acquirer or Sponsor Name',
     thBmType: 'Buyer Type',
@@ -444,6 +453,7 @@ const I18N = {
     sensCorner: 'Leverage / Exit',
     lossProbPrefix: 'Capital Loss',
     debtSharePrefix: 'Debt Share',
+    nmTooltip: 'Not meaningful because EBITDA is zero or negative',
   },
 };
 
@@ -459,6 +469,7 @@ const state = {
   customTargetPayload: null,
   buyerMatches: null,
   buyerCategory: 'top_overall',
+  buyerRegions: new Set(),
   premiumRec: null,
   lboResult: null,
   lboParams: {
@@ -487,6 +498,12 @@ function t(key) {
   return (I18N[state.lang] && I18N[state.lang][key]) || I18N.tr[key] || key;
 }
 
+const NM_DASH = '—';
+
+function fmtMultiple(value, digits = 2) {
+  return Number.isFinite(value) ? `${value.toFixed(digits)}x` : NM_DASH;
+}
+
 function getActiveTargetPayload() {
   if (state.isCustomMode && state.customTargetPayload) {
     return { custom_target: state.customTargetPayload };
@@ -511,7 +528,9 @@ function updateContextBar(summaryObj) {
   document.getElementById('ctxTargetRegion').textContent = summaryObj.region;
   document.getElementById('ctxTargetSector').textContent = summaryObj.sector;
   document.getElementById('ctxTargetEv').textContent = `EV: ${summaryObj.enterprise_value_usd_m.toFixed(0)}M$`;
-  const ebitdaEst = summaryObj.enterprise_value_usd_m / Math.max(summaryObj.ev_to_ebitda, 1.0);
+  const ebitdaEst = Number.isFinite(summaryObj.ebitda_usd_m)
+    ? summaryObj.ebitda_usd_m
+    : summaryObj.enterprise_value_usd_m / Math.max(summaryObj.ev_to_ebitda || 1.0, 1.0);
   document.getElementById('ctxTargetEbitda').textContent = `EBITDA: ${ebitdaEst.toFixed(0)}M$`;
 }
 
@@ -567,11 +586,13 @@ function renderTargetsTable() {
       tr.classList.add('selected');
     }
 
-    const discClass = item.sector_discount_pct >= 0 ? 'val-pos' : 'val-neg';
-    const discSign =
-      item.sector_discount_pct >= 0
-        ? `+${item.sector_discount_pct.toFixed(1)}`
-        : item.sector_discount_pct.toFixed(1);
+    const hasDisc = Number.isFinite(item.sector_discount_pct);
+    const discClass = !hasDisc ? 'val-nm' : item.sector_discount_pct >= 0 ? 'val-pos' : 'val-neg';
+    const discSign = !hasDisc
+      ? NM_DASH
+      : item.sector_discount_pct >= 0
+        ? `%+${item.sector_discount_pct.toFixed(1)}`
+        : `%${item.sector_discount_pct.toFixed(1)}`;
     const rankClass = item.rank <= 15 ? 'rank-badge top-tier' : 'rank-badge';
     const probWidth = Math.min(Math.max(item.probability_pct, 4), 100);
 
@@ -589,9 +610,9 @@ function renderTargetsTable() {
         </div>
       </td>
       <td class="num-col">${item.market_cap_usd_m.toLocaleString(numLocale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-      <td class="num-col">${item.ev_to_ebitda.toFixed(2)}x</td>
-      <td class="num-col ${discClass}">%${discSign}</td>
-      <td class="num-col">${item.net_debt_to_ebitda.toFixed(2)}x</td>
+      <td class="num-col" title="${Number.isFinite(item.ev_to_ebitda) ? '' : t('nmTooltip')}">${fmtMultiple(item.ev_to_ebitda)}</td>
+      <td class="num-col ${discClass}">${discSign}</td>
+      <td class="num-col" title="${Number.isFinite(item.net_debt_to_ebitda) ? '' : t('nmTooltip')}">${fmtMultiple(item.net_debt_to_ebitda)}</td>
       <td class="num-col">%${item.fcf_to_assets_pct.toFixed(1)}</td>
       <td>${item.primary_rationale}</td>
     `;
@@ -634,13 +655,14 @@ async function loadSingleTargetDetail(ticker) {
   document.getElementById('ddRank').textContent = `${t('ddRankPrefix')} #${detail.rank}`;
   document.getElementById('ddMcapEv').textContent = `${detail.market_cap_usd_m.toFixed(0)}M$ / ${detail.enterprise_value_usd_m.toFixed(0)}M$`;
   document.getElementById('ddSize').textContent = detail.size_bucket;
-  document.getElementById('ddEvEbitda').textContent = `${detail.ev_to_ebitda.toFixed(2)}x`;
-  const dSign =
-    detail.sector_discount_pct >= 0
-      ? `+${detail.sector_discount_pct.toFixed(1)}`
-      : detail.sector_discount_pct.toFixed(1);
-  document.getElementById('ddDiscount').textContent = `${t('ddDiscountPrefix')} %${dSign}`;
-  document.getElementById('ddLeverage').textContent = `${detail.net_debt_to_ebitda.toFixed(2)}x`;
+  document.getElementById('ddEvEbitda').textContent = fmtMultiple(detail.ev_to_ebitda);
+  const dSign = !Number.isFinite(detail.sector_discount_pct)
+    ? NM_DASH
+    : detail.sector_discount_pct >= 0
+      ? `%+${detail.sector_discount_pct.toFixed(1)}`
+      : `%${detail.sector_discount_pct.toFixed(1)}`;
+  document.getElementById('ddDiscount').textContent = `${t('ddDiscountPrefix')} ${dSign}`;
+  document.getElementById('ddLeverage').textContent = fmtMultiple(detail.net_debt_to_ebitda);
   document.getElementById('ddFcf').textContent = `${t('ddFcfPrefix')} %${detail.fcf_to_assets_pct.toFixed(1)}`;
   document.getElementById('ddGrowth').textContent = `%${detail.rev_growth_1y_pct.toFixed(1)}`;
   document.getElementById('ddMargin').textContent = `${t('ddMarginPrefix')} %${detail.ebitda_margin_pct.toFixed(1)}`;
@@ -698,20 +720,74 @@ async function loadSingleTargetDetail(ticker) {
   }
 }
 
+async function reloadBuyersForRegionFilter() {
+  const payload = getActiveTargetPayload();
+  if (state.buyerRegions.size > 0) {
+    payload.buyer_regions = Array.from(state.buyerRegions);
+  }
+  state.buyerMatches = await fetchBuyerMatches(payload, state.lang);
+  renderBuyersView();
+}
+
+function renderBuyerRegionChips(bm) {
+  const container = document.getElementById('buyerRegionChips');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const allBtn = document.createElement('button');
+  allBtn.type = 'button';
+  allBtn.className = `filter-chip ${state.buyerRegions.size === 0 ? 'active' : ''}`;
+  allBtn.textContent = t('bmRegionAll');
+  allBtn.addEventListener('click', () => {
+    state.buyerRegions.clear();
+    reloadBuyersForRegionFilter();
+  });
+  container.appendChild(allBtn);
+
+  const regions = bm.available_buyer_regions || [];
+  regions.forEach((regObj) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `filter-chip ${state.buyerRegions.has(regObj.code) ? 'active' : ''}`;
+    btn.textContent = regObj.label;
+    btn.addEventListener('click', () => {
+      if (state.buyerRegions.has(regObj.code)) {
+        state.buyerRegions.delete(regObj.code);
+      } else {
+        state.buyerRegions.add(regObj.code);
+      }
+      if (state.buyerRegions.size === regions.length) {
+        state.buyerRegions.clear();
+      }
+      reloadBuyersForRegionFilter();
+    });
+    container.appendChild(btn);
+  });
+}
+
 function renderBuyersView() {
   if (!state.buyerMatches) return;
   const bm = state.buyerMatches;
+  renderBuyerRegionChips(bm);
   const list = bm[state.buyerCategory] || bm.top_overall || [];
 
   document.getElementById('bmDealEv').textContent = `${bm.implied_deal_ev_usd_m.toLocaleString('tr-TR')}M$`;
   document.getElementById('bmEquityTicket').textContent = `${bm.required_sponsor_equity_usd_m.toLocaleString('tr-TR')}M$`;
-  document.getElementById('bmStratPool').textContent = String(bm.strategic_pool_count);
-  document.getElementById('bmPePool').textContent = String(bm.financial_pool_count);
+  document.getElementById('bmStratPool').textContent = String(
+    (bm.strategic_pool_count || 0) + (bm.conglomerate_pool_count || 0)
+  );
+  document.getElementById('bmPePool').textContent = String(
+    (bm.financial_pool_count || 0) + (bm.swf_pool_count || 0)
+  );
 
   if (list.length > 0) {
     document.getElementById('bmTopBuyerName').textContent = list[0].name;
     document.getElementById('bmTopBuyerScore').textContent = `${list[0].total_score.toFixed(1)} / 100`;
     document.getElementById('bmTopBuyerType').textContent = list[0].buyer_type;
+  } else {
+    document.getElementById('bmTopBuyerName').textContent = '--';
+    document.getElementById('bmTopBuyerScore').textContent = '--';
+    document.getElementById('bmTopBuyerType').textContent = '--';
   }
 
   const tbody = document.getElementById('buyerMatchTableBody');
@@ -885,8 +961,12 @@ async function loadAllModulesForCurrentTarget(syncLboEntryEv = true) {
     await loadSingleTargetDetail(state.selectedTicker);
   }
 
+  const buyerPayload = { ...payload };
+  if (state.buyerRegions.size > 0) {
+    buyerPayload.buyer_regions = Array.from(state.buyerRegions);
+  }
   const [buyers, premium] = await Promise.all([
-    fetchBuyerMatches(payload, state.lang),
+    fetchBuyerMatches(buyerPayload, state.lang),
     fetchPremiumRecommendation(payload, state.lang),
   ]);
 

@@ -1,7 +1,8 @@
 """Clean institutional bilingual (TR / EN) formatting and serialization utilities for the Origon REST API."""
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+import numpy as np
 import pandas as pd
 
 from src.config import FEATURE_LABELS_EN, FEATURE_LABELS_TR
@@ -10,12 +11,14 @@ REGION_DISPLAY_MAP_TR: Dict[str, str] = {
     "US (NYSE/NASDAQ)": "ABD Pazarı",
     "Europe (Euronext/XETRA/LSE)": "Avrupa Pazarı",
     "Turkey (Borsa İstanbul - BIST)": "Türkiye Borsa İstanbul",
+    "MENA / Global Capital": "Körfez ve Küresel Sermaye",
 }
 
 REGION_DISPLAY_MAP_EN: Dict[str, str] = {
     "US (NYSE/NASDAQ)": "United States Market",
     "Europe (Euronext/XETRA/LSE)": "European Market",
     "Turkey (Borsa İstanbul - BIST)": "Turkey Borsa Istanbul",
+    "MENA / Global Capital": "MENA and Global Capital",
 }
 
 SECTOR_DISPLAY_MAP_TR: Dict[str, str] = {
@@ -160,6 +163,26 @@ def translate_rationale_string(raw_rationale: str, lang: str = "tr") -> str:
     return out
 
 
+def display_multiple(row: pd.Series, col: str, mult: float = 1.0, ndigits: int = 2) -> Optional[float]:
+    """
+    Return the unwinsorized display value of a valuation multiple, or None when the multiple is
+    not meaningful, for example EV/EBITDA of a company with negative EBITDA.
+    Falls back to the model column for artifacts created before display columns existed.
+    """
+    disp_key = f"disp_{col}"
+    if disp_key in row.index:
+        raw = row.get(disp_key)
+    else:
+        raw = row.get(col)
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(val):
+        return None
+    return round(val * mult, ndigits)
+
+
 def serialize_target_row(row: pd.Series, lang: str = "tr") -> Dict[str, Any]:
     en = is_en_lang(lang)
     reg_raw = str(row.get("region", "US (NYSE/NASDAQ)"))
@@ -190,11 +213,13 @@ def serialize_target_row(row: pd.Series, lang: str = "tr") -> Dict[str, Any]:
         "probability_pct": round(float(row["predicted_ma_pct"]), 2),
         "market_cap_usd_m": round(mcap, 1),
         "enterprise_value_usd_m": round(float(row.get("enterprise_value", mcap)), 1),
-        "ev_to_ebitda": round(float(row["ev_to_ebitda"]), 2),
-        "price_to_book": round(float(row["price_to_book"]), 2),
-        "price_to_sales": round(float(row["price_to_sales"]), 2),
-        "sector_discount_pct": round(float(row["sector_ev_ebitda_discount"]) * 100.0, 1),
-        "net_debt_to_ebitda": round(float(row["net_debt_to_ebitda"]), 2),
+        "ev_to_ebitda": display_multiple(row, "ev_to_ebitda", 1.0, 2),
+        "price_to_book": display_multiple(row, "price_to_book", 1.0, 2),
+        "price_to_sales": display_multiple(row, "price_to_sales", 1.0, 2),
+        "sector_discount_pct": display_multiple(row, "sector_ev_ebitda_discount", 100.0, 1),
+        "net_debt_to_ebitda": display_multiple(row, "net_debt_to_ebitda", 1.0, 2),
+        "ebitda_usd_m": round(float(row.get("ebitda", 0.0) or 0.0), 1),
+        "ebitda_meaningful": bool(int(row.get("ebitda_meaningful", 1) or 0)),
         "fcf_to_assets_pct": round(float(row["fcf_to_assets"]) * 100.0, 1),
         "cash_to_assets_pct": round(float(row["cash_to_assets"]) * 100.0, 1),
         "rev_growth_1y_pct": round(float(row["rev_growth_1y"]) * 100.0, 1),
@@ -226,8 +251,16 @@ def build_peer_benchmarks(comp_row: pd.Series, sec_med_row: pd.Series, lang: str
     ]
     rows: List[Dict[str, Any]] = []
     for feat_key, unit, mult in specs:
-        c_val = float(comp_row[feat_key]) * mult
-        s_val = float(sec_med_row[feat_key]) * mult
+        disp_key = f"disp_{feat_key}"
+        c_raw = comp_row.get(disp_key, comp_row.get(feat_key))
+        s_raw = sec_med_row.get(disp_key, sec_med_row.get(feat_key))
+        try:
+            c_val = float(c_raw) * mult
+            s_val = float(s_raw) * mult
+        except (TypeError, ValueError):
+            continue
+        if not (np.isfinite(c_val) and np.isfinite(s_val)):
+            continue
         diff_pct = ((c_val - s_val) / max(abs(s_val), 1e-3)) * 100.0
         z_val = float(comp_row.get(f"{feat_key}_sector_z", 0.0))
 

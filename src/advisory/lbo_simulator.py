@@ -1,9 +1,42 @@
 """Module 4: 5-Year Dynamic LBO and 5,000-Iteration Cholesky Monte Carlo Simulator with Minimum Cash Buffer Rule."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 import numpy as np
 
 from src.api.schemas import is_en_lang
+
+TX_FEE_PCT_EV = 0.0225
+
+
+def deductible_interest(
+    interest_exp: Union[float, np.ndarray],
+    ebitda: Union[float, np.ndarray],
+    total_debt: Union[float, np.ndarray],
+    equity: Union[float, np.ndarray],
+    region: str = "US (NYSE/NASDAQ)",
+) -> Union[float, np.ndarray]:
+    """
+    Tax-deductible interest expense under regional corporate tax rules:
+    - US (IRC Section 163(j), EBITDA base permanently restored by OBBBA 2025) & EU (ATAD):
+      deductible interest is capped at 30% of EBITDA.
+    - Turkey (KVK Art. 11/1-i financing expense restriction):
+      when total debt exceeds equity, 10% of the financing expense attributable to the excess
+      debt share is disallowed (KKEG).
+    """
+    is_turkey = "turkey" in str(region).lower() or "bist" in str(region).lower() or "türkiye" in str(region).lower()
+    if is_turkey:
+        eq_pos = np.maximum(equity, 0.0)
+        excess_debt = np.maximum(total_debt - eq_pos, 0.0)
+        excess_share = np.where(total_debt > 1e-6, excess_debt / np.maximum(total_debt, 1e-6), 0.0)
+        disallowed = interest_exp * excess_share * 0.10
+        res = np.maximum(interest_exp - disallowed, 0.0)
+    else:
+        cap = np.maximum(0.30 * ebitda, 0.0)
+        res = np.minimum(interest_exp, cap)
+
+    if np.ndim(interest_exp) == 0 and np.ndim(ebitda) == 0:
+        return float(res)
+    return res
 
 
 class LBORiskSimulator:
@@ -32,11 +65,14 @@ class LBORiskSimulator:
         nwc_pct_delta_rev: float,
         tax_rate: float,
         min_cash_buffer_pct_rev: float,
+        sponsor_equity_0: float = 0.0,
+        region: str = "US (NYSE/NASDAQ)",
     ) -> List[Dict[str, float]]:
         rev = rev_0
         senior_debt = senior_debt_0
         sub_debt = sub_debt_0
         cash = max(cash_0, rev_0 * min_cash_buffer_pct_rev, 10.0)
+        book_equity = max(sponsor_equity_0, entry_ev - senior_debt_0 - sub_debt_0, 10.0)
 
         schedule: List[Dict[str, float]] = []
         for yr in range(1, 6):
@@ -46,37 +82,61 @@ class LBORiskSimulator:
             depreciation = rev * (capex_pct_rev * 0.78)
             ebit = ebitda - depreciation
 
-            interest_exp = senior_debt * senior_rate + sub_debt * sub_rate
-            ebt = ebit - interest_exp
-            taxes = max(0.0, ebt * tax_rate)
-            net_income = ebt - taxes
-
             capex = rev * capex_pct_rev
-            delta_nwc = max(0.0, (rev - prev_rev) * nwc_pct_delta_rev)
-            fcf = net_income + depreciation - capex - delta_nwc
-
-            # Minimum Operating Cash Buffer Rule: cash is NEVER swept below min_cash_buffer
+            rev_delta = rev - prev_rev
+            delta_nwc = (rev_delta * nwc_pct_delta_rev) if rev_delta >= 0.0 else (0.5 * rev_delta * nwc_pct_delta_rev)
             min_cash_req = max(rev * min_cash_buffer_pct_rev, 10.0)
-            pre_sweep_cash = cash + fcf
 
-            if pre_sweep_cash > min_cash_req:
-                sweepable_cash = pre_sweep_cash - min_cash_req
-                paid_senior = min(senior_debt, sweepable_cash)
-                senior_debt -= paid_senior
-                rem_sweep = sweepable_cash - paid_senior
-                paid_sub = min(sub_debt, rem_sweep)
-                sub_debt -= paid_sub
-                total_debt_paydown = paid_senior + paid_sub
-                cash = min_cash_req
-            else:
-                # Cash buffer preservation: no debt sweep when cash falls below operating buffer
-                total_debt_paydown = 0.0
-                shortfall = min_cash_req - pre_sweep_cash
-                senior_debt += shortfall  # Revolver draw to preserve minimum operating cash buffer
-                cash = min_cash_req
+            beg_senior = senior_debt
+            beg_sub = sub_debt
+            end_senior = beg_senior
+            end_sub = beg_sub
+            end_cash = cash
+            interest_exp = beg_senior * senior_rate + beg_sub * sub_rate
+            ded_int = interest_exp
+            net_income = 0.0
+            fcf = 0.0
+            total_debt_paydown = 0.0
+
+            # Fixed-point iteration resolves average-debt interest circularity (Rosenbaum & Pearl)
+            for _ in range(5):
+                avg_senior = 0.5 * (beg_senior + end_senior)
+                avg_sub = 0.5 * (beg_sub + end_sub)
+                interest_exp = avg_senior * senior_rate + avg_sub * sub_rate
+                ded_int = float(
+                    deductible_interest(interest_exp, ebitda, beg_senior + beg_sub, book_equity, region)
+                )
+                taxable_inc = max(0.0, ebit - ded_int)
+                taxes = taxable_inc * tax_rate
+                net_income = ebit - interest_exp - taxes
+                fcf = net_income + depreciation - capex - delta_nwc
+
+                # Minimum Operating Cash Buffer Rule: cash is NEVER swept below min_cash_buffer
+                pre_sweep_cash = cash + fcf
+                if pre_sweep_cash > min_cash_req:
+                    sweepable_cash = pre_sweep_cash - min_cash_req
+                    paid_senior = min(beg_senior, sweepable_cash)
+                    end_senior = beg_senior - paid_senior
+                    rem_sweep = sweepable_cash - paid_senior
+                    paid_sub = min(beg_sub, rem_sweep)
+                    end_sub = beg_sub - paid_sub
+                    total_debt_paydown = paid_senior + paid_sub
+                    end_cash = min_cash_req
+                else:
+                    total_debt_paydown = 0.0
+                    shortfall = min_cash_req - pre_sweep_cash
+                    end_senior = beg_senior + shortfall
+                    end_sub = beg_sub
+                    end_cash = min_cash_req
+
+            senior_debt = end_senior
+            sub_debt = end_sub
+            cash = end_cash
+            book_equity = max(book_equity + net_income, 1.0)
 
             total_ending_debt = senior_debt + sub_debt
             net_debt = total_ending_debt - cash
+            icr = ebitda / max(interest_exp, 0.1)
 
             schedule.append(
                 {
@@ -84,6 +144,8 @@ class LBORiskSimulator:
                     "revenue_usd_m": round(rev, 1),
                     "ebitda_usd_m": round(ebitda, 1),
                     "interest_expense_usd_m": round(interest_exp, 1),
+                    "deductible_interest_usd_m": round(ded_int, 1),
+                    "interest_coverage": round(icr, 2),
                     "free_cash_flow_usd_m": round(fcf, 1),
                     "min_cash_buffer_usd_m": round(min_cash_req, 1),
                     "debt_paydown_usd_m": round(total_debt_paydown, 1),
@@ -108,12 +170,14 @@ class LBORiskSimulator:
         base_growth: float,
         base_margin: float,
         min_cash_buffer_pct_rev: float,
+        region: str = "US (NYSE/NASDAQ)",
     ) -> Dict[str, float]:
+        tx_fees = entry_ev * TX_FEE_PCT_EV
         total_debt_0 = min(ebitda_0 * leverage_turns, entry_ev * 0.85)
         senior_0 = total_debt_0 * senior_share
         sub_0 = total_debt_0 * (1.0 - senior_share)
         min_cash_0 = max(rev_0 * min_cash_buffer_pct_rev, 10.0)
-        sponsor_equity_0 = max(entry_ev - total_debt_0 + min_cash_0, entry_ev * 0.15)
+        sponsor_equity_0 = max(entry_ev + tx_fees + min_cash_0 - total_debt_0, entry_ev * 0.15)
 
         sched = self._run_deterministic_schedule(
             rev_0=rev_0,
@@ -130,6 +194,8 @@ class LBORiskSimulator:
             nwc_pct_delta_rev=0.06,
             tax_rate=0.23,
             min_cash_buffer_pct_rev=min_cash_buffer_pct_rev,
+            sponsor_equity_0=sponsor_equity_0,
+            region=region,
         )
         yr5 = sched[-1]
         exit_ev = yr5["ebitda_usd_m"] * exit_multiple
@@ -151,6 +217,7 @@ class LBORiskSimulator:
         min_cash_buffer_pct_rev: float = 0.04,
         lang: str = "tr",
     ) -> Dict[str, Any]:
+        region_code = str(target.get("region_code", "US (NYSE/NASDAQ)"))
         rev_0 = max(float(target["revenue"]), 20.0)
         ebitda_0 = max(float(target["ebitda"]), 4.0)
         base_margin = float(np.clip(ebitda_0 / rev_0, 0.05, 0.65))
@@ -161,11 +228,12 @@ class LBORiskSimulator:
         if exit_ev_ebitda_multiple <= 0:
             exit_ev_ebitda_multiple = round(max(entry_ev_usd_m / ebitda_0, 6.5), 1)
 
+        tx_fees_0 = entry_ev_usd_m * TX_FEE_PCT_EV
         total_debt_0 = min(ebitda_0 * total_debt_ebitda_turns, entry_ev_usd_m * 0.85)
         senior_0 = total_debt_0 * senior_debt_share
         sub_0 = total_debt_0 * (1.0 - senior_debt_share)
         min_cash_0 = max(rev_0 * min_cash_buffer_pct_rev, 10.0)
-        sponsor_equity_0 = max(entry_ev_usd_m - total_debt_0 + min_cash_0, entry_ev_usd_m * 0.15)
+        sponsor_equity_0 = max(entry_ev_usd_m + tx_fees_0 + min_cash_0 - total_debt_0, entry_ev_usd_m * 0.15)
 
         capex_pct_rev = 0.048
         nwc_pct_delta_rev = 0.06
@@ -187,6 +255,8 @@ class LBORiskSimulator:
             nwc_pct_delta_rev=nwc_pct_delta_rev,
             tax_rate=tax_rate,
             min_cash_buffer_pct_rev=min_cash_buffer_pct_rev,
+            sponsor_equity_0=sponsor_equity_0,
+            region=region_code,
         )
 
         # 2. Vectorized 5,000-Iteration Cholesky-Correlated Monte Carlo Simulation
@@ -208,7 +278,10 @@ class LBORiskSimulator:
         senior_vec = np.full(n_sims, senior_0, dtype=float)
         sub_vec = np.full(n_sims, sub_0, dtype=float)
         cash_vec = np.full(n_sims, min_cash_0, dtype=float)
+        equity_vec = np.full(n_sims, sponsor_equity_0, dtype=float)
         crunch_flag = np.zeros(n_sims, dtype=bool)
+        covenant_breach_flag = np.zeros(n_sims, dtype=bool)
+        max_lev_covenant = max(total_debt_ebitda_turns + 1.5, 6.5)
 
         exit_mult_shocks = np.zeros(n_sims, dtype=float)
 
@@ -228,36 +301,56 @@ class LBORiskSimulator:
             dep_vec = rev_vec * (capex_pct_rev * 0.78)
             ebit_vec = ebitda_vec - dep_vec
 
-            int_vec = senior_vec * np.maximum(senior_interest_rate + r_shock, 0.02) + sub_vec * np.maximum(
-                subordinated_interest_rate + 0.6 * r_shock, 0.04
-            )
-            ebt_vec = ebit_vec - int_vec
-            tax_vec = np.maximum(0.0, ebt_vec * tax_rate)
-            ni_vec = ebt_vec - tax_vec
-
             capex_vec = rev_vec * capex_pct_rev
-            dnwc_vec = np.maximum(0.0, (rev_vec - prev_rev_vec) * nwc_pct_delta_rev)
-            fcf_vec = ni_vec + dep_vec - capex_vec - dnwc_vec
-
-            # Mandatory debt service check & Minimum Cash Buffer enforcement
-            mandatory_amort = 0.03 * senior_0
+            rev_delta_vec = rev_vec - prev_rev_vec
+            dnwc_vec = np.where(
+                rev_delta_vec >= 0.0,
+                rev_delta_vec * nwc_pct_delta_rev,
+                0.5 * rev_delta_vec * nwc_pct_delta_rev,
+            )
             min_cash_req_vec = np.maximum(rev_vec * min_cash_buffer_pct_rev, 10.0)
-            pre_sweep_vec = cash_vec + fcf_vec
+            eff_sen_rate = np.maximum(senior_interest_rate + r_shock, 0.02)
+            eff_sub_rate = np.maximum(subordinated_interest_rate + 0.6 * r_shock, 0.04)
 
-            # A path experiences a cash crunch / debt service failure if pre-sweep cash falls below min_cash + mandatory amort
+            beg_sen_vec = senior_vec
+            beg_sub_vec = sub_vec
+            end_sen_vec = beg_sen_vec.copy()
+            end_sub_vec = beg_sub_vec.copy()
+
+            # 2-pass fixed point for vectorized average-debt interest & regional tax shield cap
+            for _ in range(2):
+                avg_sen_vec = 0.5 * (beg_sen_vec + end_sen_vec)
+                avg_sub_vec = 0.5 * (beg_sub_vec + end_sub_vec)
+                int_vec = avg_sen_vec * eff_sen_rate + avg_sub_vec * eff_sub_rate
+                ded_int_vec = deductible_interest(
+                    int_vec, ebitda_vec, beg_sen_vec + beg_sub_vec, equity_vec, region_code
+                )
+                tax_vec = np.maximum(0.0, (ebit_vec - ded_int_vec) * tax_rate)
+                ni_vec = ebit_vec - int_vec - tax_vec
+                fcf_vec = ni_vec + dep_vec - capex_vec - dnwc_vec
+
+                pre_sweep_vec = cash_vec + fcf_vec
+                excess_cash = np.maximum(0.0, pre_sweep_vec - min_cash_req_vec)
+                paid_sen = np.minimum(beg_sen_vec, excess_cash)
+                rem_excess = excess_cash - paid_sen
+                paid_sub = np.minimum(beg_sub_vec, rem_excess)
+                shortfall_vec = np.maximum(0.0, min_cash_req_vec - pre_sweep_vec)
+                end_sen_vec = beg_sen_vec - paid_sen + shortfall_vec
+                end_sub_vec = beg_sub_vec - paid_sub
+
+            # Mandatory debt service check & maintenance covenants (ICR < 1.5x or Net Leverage > covenant)
+            mandatory_amort = 0.03 * senior_0
             yr_crunch = (pre_sweep_vec - mandatory_amort < min_cash_req_vec) | (ebitda_vec - capex_vec < int_vec)
             crunch_flag = crunch_flag | yr_crunch
 
-            excess_cash = np.maximum(0.0, pre_sweep_vec - min_cash_req_vec)
-            paid_sen = np.minimum(senior_vec, excess_cash)
-            senior_vec -= paid_sen
-            rem_excess = excess_cash - paid_sen
-            paid_sub = np.minimum(sub_vec, rem_excess)
-            sub_vec -= paid_sub
+            net_lev_vec = (end_sen_vec + end_sub_vec - min_cash_req_vec) / np.maximum(ebitda_vec, 1.0)
+            icr_vec = ebitda_vec / np.maximum(int_vec, 0.1)
+            covenant_breach_flag = covenant_breach_flag | (icr_vec < 1.50) | (net_lev_vec > max_lev_covenant)
 
-            shortfall_vec = np.maximum(0.0, min_cash_req_vec - pre_sweep_vec)
-            senior_vec += shortfall_vec
+            senior_vec = end_sen_vec
+            sub_vec = end_sub_vec
             cash_vec = min_cash_req_vec
+            equity_vec = np.maximum(equity_vec + ni_vec, 1.0)
 
         sim_exit_mult = np.clip(exit_ev_ebitda_multiple + 1.55 * exit_mult_shocks, 3.8, 24.0)
         exit_ev_vec = ebitda_vec * sim_exit_mult
@@ -314,6 +407,7 @@ class LBORiskSimulator:
                     base_growth=base_growth,
                     base_margin=base_margin,
                     min_cash_buffer_pct_rev=min_cash_buffer_pct_rev,
+                    region=region_code,
                 )
                 cells.append(
                     {
@@ -330,6 +424,7 @@ class LBORiskSimulator:
             "n_iterations": n_sims,
             "capital_structure": {
                 "entry_ev_usd_m": round(entry_ev_usd_m, 1),
+                "transaction_fees_usd_m": round(tx_fees_0, 1),
                 "total_debt_usd_m": round(total_debt_0, 1),
                 "senior_debt_usd_m": round(senior_0, 1),
                 "subordinated_debt_usd_m": round(sub_0, 1),
@@ -350,6 +445,7 @@ class LBORiskSimulator:
                 "prob_above_20pct_irr": round(float(np.mean(irr_vec >= 20.0) * 100.0), 1),
                 "prob_capital_loss_pct": round(float(np.mean(moic_vec < 1.0) * 100.0), 1),
                 "stress_default_probability_pct": round(float(np.mean(crunch_flag) * 100.0), 1),
+                "covenant_breach_probability_pct": round(float(np.mean(covenant_breach_flag) * 100.0), 1),
             },
             "projection_schedule": schedule,
             "irr_histogram": histogram,

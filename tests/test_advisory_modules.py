@@ -44,6 +44,18 @@ def test_target_resolver_and_buyer_matching_engine_with_40_pe_sponsors():
     assert len(res_tr["top_overall"]) == 5
     assert len(res_tr["top_strategic"]) == 5
     assert len(res_tr["top_financial"]) == 5
+    assert len(res_tr["top_conglomerate"]) == 5
+    assert len(res_tr["top_swf"]) == 5
+    assert res_tr["conglomerate_pool_count"] == 10
+    assert res_tr["swf_pool_count"] == 10
+
+    # Market region filter restricts acquirer pool while keeping cross-border default intact
+    res_tr_local = matcher.match_buyers(
+        custom_target, top_k=5, lang="tr", buyer_regions=["Turkey (Borsa İstanbul - BIST)"]
+    )
+    assert len(res_tr_local["top_overall"]) == 5
+    assert all(b["region"] == "Türkiye Borsa İstanbul" for b in res_tr_local["top_overall"])
+    assert res_tr_local["applied_buyer_regions"] == ["Turkey (Borsa İstanbul - BIST)"]
 
     top1 = res_tr["top_overall"][0]
     assert 0.0 <= top1["total_score"] <= 100.0

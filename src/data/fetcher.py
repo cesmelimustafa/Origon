@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import ARTIFACTS_DIR, DEFAULT_FX_TO_USD, MARKET_TICKERS_BY_REGION_AND_SECTOR
-from src.data.benchmark_generator import generate_historical_ma_panel
+from src.data.benchmark_generator import SECTOR_PROFILES, generate_historical_ma_panel
 
 logger = logging.getLogger(__name__)
 
@@ -120,15 +120,53 @@ class YFinanceDataFetcher:
             fin_to_usd = float(fx_rates.get(fin_curr, fx_rates.get(fin_curr.upper(), 1.0)))
             mcap_in_fin_curr = raw_mcap * (mkt_to_usd / max(fin_to_usd, 1e-6))
 
-            total_assets = float(info.get("totalAssets") or (mcap_in_fin_curr * 1.15)) / 1e6
-            total_debt = float(info.get("totalDebt") or 0.0) / 1e6
-            cash = float(info.get("totalCash") or 0.0) / 1e6
-            revenue = float(info.get("totalRevenue") or (mcap_in_fin_curr * 0.65)) / 1e6
-            ebitda = float(info.get("ebitda") or (revenue * 0.18)) / 1e6
-            if ebitda <= 0:
-                ebitda = max(revenue * float(info.get("ebitdaMargins") or 0.15), 1.0)
-            net_income = float(info.get("netIncomeToCommon") or (ebitda * 0.55)) / 1e6
-            fcf = float(info.get("freeCashflow") or (ebitda * 0.48)) / 1e6
+            def _info_m(key: str) -> Optional[float]:
+                """Return an info field in millions, or None when Yahoo Finance does not report it."""
+                val = info.get(key)
+                if val is None:
+                    return None
+                try:
+                    fval = float(val)
+                except (TypeError, ValueError):
+                    return None
+                if not np.isfinite(fval):
+                    return None
+                return fval / 1e6
+
+            def _info_ratio(key: str) -> Optional[float]:
+                val = info.get(key)
+                try:
+                    fval = float(val) if val is not None else None
+                except (TypeError, ValueError):
+                    return None
+                return fval if fval is not None and np.isfinite(fval) else None
+
+            # All statement fields below are already expressed in millions of the financial currency.
+            total_assets = _info_m("totalAssets") or (mcap_in_fin_curr * 1.15)
+            total_debt = _info_m("totalDebt") or 0.0
+            cash = _info_m("totalCash") or 0.0
+            revenue = _info_m("totalRevenue") or (mcap_in_fin_curr * 0.65)
+            revenue = max(revenue, 1.0)
+
+            # EBITDA fallback chain: reported EBITDA, then EBITDA margin, then operating margin plus a
+            # depreciation proxy, then the sector profile margin. Reported negative EBITDA is preserved
+            # so that EV/EBITDA can be flagged as not meaningful downstream instead of being fabricated.
+            reported_ebitda = _info_m("ebitda")
+            ebitda_margin_info = _info_ratio("ebitdaMargins")
+            op_margin_info = _info_ratio("operatingMargins")
+            if reported_ebitda is not None and reported_ebitda != 0.0:
+                ebitda = reported_ebitda
+            elif ebitda_margin_info is not None and ebitda_margin_info != 0.0:
+                ebitda = revenue * ebitda_margin_info
+            elif op_margin_info is not None and op_margin_info != 0.0:
+                ebitda = revenue * (op_margin_info + 0.035)
+            else:
+                ebitda = revenue * float(SECTOR_PROFILES.get(sector, {}).get("margin", 0.15))
+
+            net_income_m = _info_m("netIncomeToCommon")
+            net_income = net_income_m if net_income_m is not None else ebitda * 0.55
+            fcf_m = _info_m("freeCashflow")
+            fcf = fcf_m if fcf_m is not None else ebitda * 0.48
             rev_growth = float(np.clip(float(info.get("revenueGrowth") or 0.07), -0.60, 1.50))
 
             # For high-inflation reporting currency (TRY), deflate nominal TRY revenue growth to real USD-equivalent growth
@@ -139,7 +177,15 @@ class YFinanceDataFetcher:
             shares = float(info.get("sharesOutstanding") or 1e7)
             total_equity = max((book_val * shares) / 1e6, total_assets - total_debt, total_assets * 0.20, 10.0)
 
-            ebitda_margin = float(np.clip(ebitda / max(revenue, 1.0), 0.03, 0.60))
+            ebitda_margin = float(np.clip(ebitda / max(revenue, 1.0), -0.50, 0.60))
+
+            # Observed drawdown from the 52-week high, used as the Baker, Pan and Wurgler reference point.
+            last_px = _info_ratio("currentPrice") or _info_ratio("regularMarketPrice")
+            high_52w = _info_ratio("fiftyTwoWeekHigh")
+            if last_px and high_52w and high_52w > 0:
+                dist_52w_high = float(np.clip(last_px / high_52w - 1.0, -0.90, 0.0))
+            else:
+                dist_52w_high = np.nan
             raw_row = {
                 "ticker": ticker_sym.upper(),
                 "company_name": info.get("shortName") or info.get("longName") or f"{ticker_sym.upper()} ({sector})",
@@ -158,7 +204,7 @@ class YFinanceDataFetcher:
                 "revenue_t_minus_1": revenue / max(1.0 + rev_growth, 0.4),
                 "revenue_t_minus_3": revenue / max((1.0 + rev_growth) ** 3, 0.4),
                 "ebitda": ebitda,
-                "ebit": ebitda * 0.82,
+                "ebit": ebitda - revenue * 0.035,
                 "net_income": net_income,
                 "interest_expense": max(total_debt * 0.05, 0.5),
                 "operating_cash_flow": fcf + revenue * 0.045,
@@ -170,6 +216,7 @@ class YFinanceDataFetcher:
                 "q2_ebitda_margin": round(ebitda_margin, 4),
                 "q3_ebitda_margin": round(ebitda_margin, 4),
                 "q4_ebitda_margin": round(ebitda_margin, 4),
+                "dist_from_52w_high": dist_52w_high,
                 "true_ma_propensity": np.nan,
                 "is_acquired": 0,
             }

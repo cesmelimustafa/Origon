@@ -98,7 +98,7 @@ export function renderValuationScatterChart(canvas, items = []) {
   const plotW = width - padLeft - padRight;
   const plotH = height - padTop - padBottom;
 
-  const sample = items.slice(0, 160);
+  const sample = items.filter((d) => Number.isFinite(d.ev_to_ebitda)).slice(0, 160);
   const maxX = Math.min(Math.max(...sample.map((d) => d.ev_to_ebitda), 20), 40);
   const maxY = Math.max(...sample.map((d) => d.probability_pct), 50);
 
